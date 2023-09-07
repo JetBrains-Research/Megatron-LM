@@ -1,10 +1,14 @@
 #!/bin/bash
 
+# export PATH=/workspace/megatron
+# source /workspace/megatron/configs/config.sh
+
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 
-CHECKPOINT_PATH=<Specify path>
-VOCAB_FILE=<Specify path to file>/bert-vocab.txt
-DATA_PATH=<Specify path and file prefix>_text_sentence
+CHECKPOINT_PATH=/workspace/checkpoints
+VOCAB_FILE=/workspace/dataset/bert-large-cased-vocab.txt
+MERGE_FILE=gpt2-merges.txt
+DATA_PATH=/workspace/dataset/data_dev_proc.jsonl # .._text_sentence
 
 BERT_ARGS="
     --num-layers 24 \
@@ -30,6 +34,7 @@ DATA_ARGS="
     --vocab-file $VOCAB_FILE \
     --split 949,50,1
 "
+#    --merge-file $MERGE_FILE \
 
 OUTPUT_ARGS="
     --log-interval 100 \
@@ -38,7 +43,7 @@ OUTPUT_ARGS="
     --eval-iters 10
 "
 
-torchrun pretrain_bert.py \
+torchrun /workspace/megatron/pretrain_bert.py \
     $BERT_ARGS \
     $DATA_ARGS \
     $OUTPUT_ARGS \
