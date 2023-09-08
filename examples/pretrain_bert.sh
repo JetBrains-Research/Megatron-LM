@@ -22,7 +22,7 @@ BERT_ARGS="
     --micro-batch-size 4 \
     --global-batch-size 8 \
     --lr 0.0001 \
-    --train-iters 1000 \
+    --train-iters 500 \
     --lr-decay-iters 990000 \
     --lr-decay-style linear \
     --min-lr 0.00001 \
@@ -42,13 +42,14 @@ DATA_ARGS="
 
 OUTPUT_ARGS="
     --log-interval 100 \
-    --save-interval 10000 \
+    --save-interval 100000 \
     --eval-interval 100 \
-    --eval-iters 10
+    --eval-iters 10 \
     --wandb-entity-name timur-galimzyanov \
     --wandb-project-name dev \
 "
 
+#    --tensorboard-dir ${LOGGING_PATH} \
 #bash -c "trap 'bash -i' DEBUG; socat TCP-LISTEN:12345,reuseaddr EXEC:bash"
 export WANDB_DISABLE_GIT=true
 export WANDB_BASE_URL="https://jetbrains.wandb.io"

@@ -91,7 +91,8 @@ def set_global_variables(args, build_tokenizer=True):
     _build_num_microbatches_calculator(args)
     if build_tokenizer:
         _ = _build_tokenizer(args)
-    _set_tensorboard_writer(args)
+    # _set_tensorboard_writer(args)
+    _set_wandb_writer(args)
     _set_adlr_autoresume(args)
     _set_timers(args)
 
@@ -151,6 +152,27 @@ def _set_tensorboard_writer(args):
             print('WARNING: TensorBoard writing requested but is not '
                   'available (are you using PyTorch 1.1.0 or later?), '
                   'no TensorBoard logs will be written.', flush=True)
+
+import wandb
+class SummaryWriter():
+    def __init__(self):
+        # Weights and biases reporting
+        pass
+    def add_scalar(self, metric_name, metric_val, iteration):
+        metrics = {
+            metric_name: metric_val,
+        }
+        wandb.log(metrics, step=iteration, commit=True)
+    def add_text(self, *args, **kwargs):
+        pass
+
+
+def _set_wandb_writer(args):
+    """Set tensorboard writer."""
+    global _GLOBAL_TENSORBOARD_WRITER
+    # _ensure_var_is_not_initialized(_GLOBAL_TENSORBOARD_WRITER,
+    #                                'wandb writer')
+    _GLOBAL_TENSORBOARD_WRITER = SummaryWriter()
 
 
 def _set_adlr_autoresume(args):

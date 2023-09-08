@@ -240,7 +240,8 @@ def init_wandb():
             entity=args.wandb_entity_name,
             project=args.wandb_project_name,
             group=args.wandb_group_name,
-            config=args
+            config=args,
+            sync_tensorboard = True,
         )
 
 def _set_random_seed(seed_, data_parallel_random_init=False):

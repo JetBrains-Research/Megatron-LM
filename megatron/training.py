@@ -629,15 +629,15 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
             )
 
     # Weights and biases reporting
-    if (iteration % args.log_interval == 0) and is_last_rank():
-        metrics = {
-            'learning-rate': learning_rate,
-            'samples': args.consumed_train_samples,
-            'loss-scale': loss_scale,
-            'grad-norm': grad_norm,
-            **loss_dict
-        }
-        wandb.log(metrics, step=iteration, commit=True)
+    # if (iteration % args.log_interval == 0) and is_last_rank():
+    #     metrics = {
+    #         'learning-rate': learning_rate,
+    #         'samples': args.consumed_train_samples,
+    #         'loss-scale': loss_scale,
+    #         'grad-norm': grad_norm,
+    #         **loss_dict
+    #     }
+    #     wandb.log(metrics, step=iteration, commit=True)
 
     if iteration % args.log_interval == 0:
         elapsed_time = timers('interval-time').elapsed(barrier=True)
