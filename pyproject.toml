@@ -16,3 +16,21 @@ skip_string_normalization = true
 # recongized by future versions, disallows to reformat code with incompatible versions
 # Matches NeMO version so people working on both codebases don't need two different version of black installed
 required_version = "19.10b0"  
+
+[tool.poetry]
+name = "megatron-LM"
+version = "0.1.0"
+description = ""
+authors = ["Timur <timur.galimzyanov@jetbrains.com>"]
+readme = "README.md"
+packages = [{include = "megatron-LM"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+torch = "^2.0.1"
+nltk = "^3.8.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
