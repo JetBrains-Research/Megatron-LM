@@ -2,6 +2,7 @@ MEGATRON_PATH="/workspace/megatron/"
 DATA_PATH="/workspace/dataset/"
 MODEL_PATH="/workspace/model_setup"
 CHECKPOINT_PATH="/workspace/checkpoints"
+LOGGING_PATH="/workspace/logging"
 
 # DATA_FILE="data_dev.jsonl"
 DATA_FILE="data_dev_short.jsonl"

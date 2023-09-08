@@ -7,6 +7,7 @@ docker run --gpus all -it --rm \
 -v $DATA_PATH:/workspace/dataset \
 -v $CHECKPOINTS_PATH:/workspace/checkpoints \
 -v $MODEL_PATH:/workspace/model_setup/ \
+-v $LOGGING_PATH:/workspace/logging/ \
 -w /workspace/megatron \
 megatron-env /bin/bash -c "source ~/.profile; exec bash"
 # nvcr.io/nvidia/pytorch:23.08-py3

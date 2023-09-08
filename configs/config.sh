@@ -3,6 +3,7 @@ DATA_PATH="/home/galimzyanov/data/Megatron/dataset_dev"
 MODEL_PATH="/home/galimzyanov/data/Megatron/model_setup"
 CHECKPOINTS_PATH="/home/galimzyanov/data/Megatron/checkpoints_dev"
 BASH_HISTORY_PATH="/home/galimzyanov/.bash_docker_history"
+LOGGING_PATH="/home/galimzyanov/data/Megatron/logging"
 
 VOCAB_FILE="${MODEL_PATH}/bert-large-uncased-vocab.txt"
 MERGE_FILE="gpt2-merges.txt"
