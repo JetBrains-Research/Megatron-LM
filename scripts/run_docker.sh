@@ -8,8 +8,8 @@ docker run --gpus all -it --rm \
 -v $CHECKPOINTS_PATH:/workspace/checkpoints \
 -v $MODEL_PATH:/workspace/model_setup/ \
 -w /workspace/megatron \
-pytorch
+megatron-env /bin/bash -c "source ~/.profile; exec bash"
 # nvcr.io/nvidia/pytorch:23.08-py3
 # --rm
 #
-#
+#export PS1="\[\033[32m\]\u@\h:\w\$\[\033[0m\] "

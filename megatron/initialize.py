@@ -9,6 +9,7 @@ import time
 import numpy as np
 import torch
 from datetime import timedelta
+import wandb
 
 from megatron import fused_kernels
 from megatron import get_adlr_autoresume
@@ -231,6 +232,16 @@ def _init_autoresume():
         autoresume.init()
         torch.distributed.barrier()
 
+def init_wandb():
+    args = get_args()
+    if args.rank == (args.world_size - 1):
+        wandb.init(
+            name=os.path.basename(args.save),
+            entity=args.wandb_entity_name,
+            project=args.wandb_project_name,
+            group=args.wandb_group_name,
+            config=args
+        )
 
 def _set_random_seed(seed_, data_parallel_random_init=False):
     """Set random seed for reproducability."""

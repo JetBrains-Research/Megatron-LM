@@ -22,7 +22,7 @@ BERT_ARGS="
     --micro-batch-size 4 \
     --global-batch-size 8 \
     --lr 0.0001 \
-    --train-iters 200 \
+    --train-iters 1000 \
     --lr-decay-iters 990000 \
     --lr-decay-style linear \
     --min-lr 0.00001 \
@@ -43,11 +43,15 @@ DATA_ARGS="
 OUTPUT_ARGS="
     --log-interval 100 \
     --save-interval 10000 \
-    --eval-interval 1000 \
+    --eval-interval 100 \
     --eval-iters 10
+    --wandb-entity-name timur-galimzyanov \
+    --wandb-project-name dev \
 "
 
 #bash -c "trap 'bash -i' DEBUG; socat TCP-LISTEN:12345,reuseaddr EXEC:bash"
+export WANDB_DISABLE_GIT=true
+export WANDB_BASE_URL="https://jetbrains.wandb.io"
 torchrun /workspace/megatron/pretrain_bert.py \
     $BERT_ARGS \
     $DATA_ARGS \

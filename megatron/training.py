@@ -6,6 +6,7 @@ from datetime import datetime
 import math
 import sys
 import time
+import wandb
 # The earliest we can measure the start time.
 _TRAIN_START_TIME = time.time()
 import torch
@@ -32,6 +33,7 @@ from megatron.optimizer import get_megatron_optimizer
 from megatron.initialize import initialize_megatron
 from megatron.initialize import write_args_to_tensorboard
 from megatron.initialize import set_jit_fusion_options
+from megatron.initialize import init_wandb
 from megatron.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.model import DistributedDataParallel as LocalDDP
 from megatron.utils import check_adlr_autoresume_termination
@@ -626,6 +628,17 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
                 iteration,
             )
 
+    # Weights and biases reporting
+    if (iteration % args.log_interval == 0) and is_last_rank():
+        metrics = {
+            'learning-rate': learning_rate,
+            'samples': args.consumed_train_samples,
+            'loss-scale': loss_scale,
+            'grad-norm': grad_norm,
+            **loss_dict
+        }
+        wandb.log(metrics, step=iteration, commit=True)
+
     if iteration % args.log_interval == 0:
         elapsed_time = timers('interval-time').elapsed(barrier=True)
         elapsed_time_per_iteration = elapsed_time / total_iterations
@@ -692,6 +705,9 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
 
     # Write args to tensorboard
     write_args_to_tensorboard()
+
+    # Init Weights and Biases
+    init_wandb()
 
     # Turn on training mode which enables dropout.
     for model_module in model:
