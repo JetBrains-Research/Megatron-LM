@@ -1,13 +1,21 @@
 #!/bin/bash
 
+source /workspace/megatron/configs/config_local.sh
 export CUDA_DEVICE_MAX_CONNECTIONS=1
+export PS1="\[\e[1;32m\]\u@\h:\[\e[1;34m\]\w\$\[\e[0m\] "
 
-CHECKPOINT_PATH=<Specify path>
-VOCAB_FILE=<Specify path to file>/t5-vocab.txt
-DATA_PATH=<Specify path and file prefix>_text_sentence
+# export PATH=/workspace/megatron
+
+DATA_PROCESSED_PATH="${DATA_PATH}dev_text_sentence" # .._text_sentence
+
+# CHECKPOINT_PATH=<Specify path>
+# VOCAB_FILE=<Specify path to file>/t5-vocab.txt
+# DATA_PATH=<Specify path and file prefix>_text_sentence
+#    --num-layers 12 \
 
 T5_ARGS="
-    --num-layers 12 \
+    --encoder-num-layers 12 \
+    --decoder-num-layers 12 \
     --hidden-size 768 \
     --num-attention-heads 12 \
     --kv-channels 64 \
@@ -30,7 +38,7 @@ T5_ARGS="
 "
 
 DATA_ARGS="
-    --data-path $DATA_PATH \
+    --data-path $DATA_PROCESSED_PATH \
     --vocab-file $VOCAB_FILE \
     --split 949,50,1
 "
@@ -42,9 +50,11 @@ OUTPUT_ARGS="
     --eval-iters 10
 "
 
+export WANDB_DISABLE_GIT=true
+export WANDB_BASE_URL="https://jetbrains.wandb.io"
 torchrun pretrain_t5.py \
     $T5_ARGS \
     $DATA_ARGS \
     $OUTPUT_ARGS \
     --save $CHECKPOINT_PATH \
-    --load $CHECKPOINT_PATH
+#    --load $CHECKPOINT_PATH

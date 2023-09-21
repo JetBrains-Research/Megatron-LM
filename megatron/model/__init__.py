@@ -4,6 +4,7 @@ from .fused_layer_norm import MixedFusedLayerNorm as LayerNorm
 
 from .distributed import DistributedDataParallel
 from .bert_model import BertModel
+from .codeformer_model import CodeformerModel
 from .gpt_model import GPTModel
 from .t5_model import T5Model
 from .language_model import get_language_model

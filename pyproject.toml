@@ -1,36 +1,64 @@
-# Copyright (c) 2023, NVIDIA CORPORATION.  All rights reserved.
-
-[tool.isort]
-profile = "black"  # black-compatible
-line_length = 100  # should match black parameters
-py_version = 38  # python 3.8 as a target version
-known_first_party = ["megatron"]  # FIRSTPARTY section
-known_third_party = ["transformer_engine"]  # THIRDPARTY section
-sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
-default_section = "THIRDPARTY"
-extend_skip = ["setup.py"]
-
-[tool.black]
-line_length = 100
-skip_string_normalization = true
-# recongized by future versions, disallows to reformat code with incompatible versions
-# Matches NeMO version so people working on both codebases don't need two different version of black installed
-required_version = "19.10b0"  
-
 [tool.poetry]
-name = "megatron-LM"
+name = "Megatron-LM"
 version = "0.1.0"
 description = ""
-authors = ["Timur <timur.galimzyanov@jetbrains.com>"]
+authors = [
+    "Egor Bogomolov <egor.bogomolov@jetbrains.com>", 
+    "Timur Galimzyanov <timur.galimzyanov@jetbrains.com>"
+]
+license = "MIT"
 readme = "README.md"
-packages = [{include = "megatron-LM"}]
+homepage = "https://github.com/JetBrains-Research/Megatron-LM"
+keywords = ["artificial intelligence", "deep learning", "transformers", "attention-mechanism", "retrieval"]
+packages = []
 
-[tool.poetry.dependencies]
-python = "^3.10"
-torch = "^2.0.1"
-nltk = "^3.8.1"
+[tool.poetry.dependencies] # general dependencies
+python = "~3.10"
+einops = "^0.6.1"
+numpy = "^1.25.0"
+sentencepiece = "^0.1.99"
+tqdm = "^4.65.0"
+torch = "^1.13"
+jsonlines = "^3.1.0"
+transformers = "^4.30.2"
+omegaconf = "^2.3.0"
+pandas = "^2.0.3"
+faiss-cpu = "^1.7.4"
+datasets = "^2.14.0"
+wandb = "^0.15.8"
+lightning = "^2.0.6"
+pytorch-lightning = "^2.0.6"
+torch-optimizer = "^0.3.0"
+pyramid = "^2.0.2"
 
+[tool.poetry.group.dev.dependencies]  # development process dependencies
+black = "^22.3"
+isort = "^5.12.0"
+mypy = "^1.0.1"
+types-tqdm = "^4.65.0.1"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 120
+target-version = ["py310"]
+
+[tool.isort]
+line_length = 120
+py_version = 310
+profile = "black"
+
+[tool.mypy]
+python_version = "3.10"
+
+[[tool.mypy.overrides]]
+module = [
+  "autofaiss.*",
+  "faiss.*",
+  "transformers.*",
+  "jsonlines.*",
+  "matplotlib.*",
+]
+ignore_missing_imports = true

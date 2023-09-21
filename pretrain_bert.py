@@ -17,7 +17,10 @@ from megatron.model import BertModel
 from megatron.training import pretrain
 from megatron.utils import average_losses_across_data_parallel_group
 from megatron.arguments import core_transformer_config_from_args
+import pydevd_pycharm
 
+PORT_DEBUG = 2000
+pydevd_pycharm.settrace('localhost', port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
 
 def model_provider(pre_process=True, post_process=True):
     """Build the model."""
