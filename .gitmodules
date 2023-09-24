@@ -1,0 +1,12 @@
+[submodule "codeformer_utils/vendor/tree-sitter-go"]
+	path = codeformer_utils/vendor/tree-sitter-go
+	url = https://github.com/tree-sitter/tree-sitter-go
+[submodule "codeformer_utils/vendor/tree-sitter-python"]
+	path = codeformer_utils/vendor/tree-sitter-python
+	url = https://github.com/tree-sitter/tree-sitter-python
+[submodule "codeformer_utils/vendor/tree-sitter-java"]
+	path = codeformer_utils/vendor/tree-sitter-java
+	url = https://github.com/tree-sitter/tree-sitter-java
+[submodule "codeformer_utils/vendor/codeformer"]
+	path = codeformer_utils/vendor/codeformer
+	url = https://github.com/JetBrains-Research/codeformer

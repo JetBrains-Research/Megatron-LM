@@ -14,8 +14,12 @@ from megatron.model import CodeformerModel
 from megatron.training import pretrain
 from megatron.utils import average_losses_across_data_parallel_group
 from megatron.arguments import core_transformer_config_from_args
+import pydevd_pycharm
 
+# import pydevd_pycharm
+# pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
 
+# TODO Change description
 """
 Pipeline parallelism for T5
 ===========================
@@ -53,7 +57,8 @@ to accumulate the encoder_hidden_state gradient across skip connections
 
 PORT_DEBUG = 2000
 try:
-    pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
+    pass
+    # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
 except Exception as e:
     print("No debugging")
 
@@ -69,36 +74,38 @@ def model_provider(pre_process=True, post_process=True, add_encoder=True, add_de
         parallel_output=True,
         pre_process=pre_process,
         post_process=post_process,
-        add_encoder=add_encoder,
-        add_decoder=add_decoder,
     )
     return model
 
 
 def get_batch(data_iterator):
     """Build the batch."""
-
-    keys = ["text_enc", "text_dec", "labels", "loss_mask", "enc_mask", "dec_mask", "enc_dec_mask"]
+    # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
+    keys = ["docs_enc", "sent_nums", "labels", "loss_mask", "enc_mask", "dec_mask", "enc_dec_mask", "sent_mask"]
     datatype = torch.int64
 
     # Broadcast data.
     if data_iterator is not None:
+        # for i in range(41):
+        #     print(i)
         data = next(data_iterator)
+        # data = next(data_iterator)
     else:
         data = None
     data_b = tensor_parallel.broadcast_data(keys, data, datatype)
 
     # Unpack.
-    tokens_enc = data_b["text_enc"].long()
-    tokens_dec = data_b["text_dec"].long()
+    docs_enc = data_b["docs_enc"].long()
     labels = data_b["labels"].long()
+    sent_nums = data_b["sent_nums"].long()
     loss_mask = data_b["loss_mask"].float()
 
     enc_mask = data_b["enc_mask"] < 0.5
-    dec_mask = data_b["dec_mask"] < 0.5
+    sent_mask = data_b["sent_mask"] < 0.5
     enc_dec_mask = data_b["enc_dec_mask"] < 0.5
+    dec_mask = data_b["dec_mask"] < 0.5
 
-    return tokens_enc, tokens_dec, loss_mask, labels, enc_mask, dec_mask, enc_dec_mask
+    return docs_enc, sent_nums, labels, loss_mask, enc_mask, sent_mask, enc_dec_mask, dec_mask
 
 
 def loss_func(loss_mask, output_tensor):
@@ -118,12 +125,20 @@ def forward_step(data_iterator, model):
 
     # Get the batch.
     timers("batch generator", log_level=2).start()
-    tokens_enc, tokens_dec, loss_mask, lm_labels, enc_mask, dec_mask, enc_dec_mask = get_batch(data_iterator)
+    docs_enc, sent_nums, labels, loss_mask, enc_mask, sent_mask, enc_dec_mask, dec_mask = get_batch(data_iterator)
     timers("batch generator").stop()
 
     # Forward model lm_labels
     output_tensor = model(
-        tokens_enc, tokens_dec, enc_mask, dec_mask, enc_dec_mask, tokentype_ids=None, lm_labels=lm_labels
+        docs_enc,
+        labels,  ## TODO remove it
+        sent_nums,
+        sent_mask=sent_mask,
+        enc_mask=enc_mask,
+        enc_dec_mask=enc_dec_mask,
+        dec_mask=dec_mask,
+        tokentype_ids=None,
+        lm_labels=labels,
     )
 
     return output_tensor, partial(loss_func, loss_mask)
@@ -142,7 +157,7 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
         max_seq_length_dec=args.decoder_seq_length,
         seed=args.seed,
         skip_warmup=(not args.mmap_warmup),
-        dataset_type="t5",
+        dataset_type="codeformer",
     )
     print_rank_0("> finished creating T5 datasets ...")
 

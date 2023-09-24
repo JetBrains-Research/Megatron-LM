@@ -3,7 +3,7 @@
 """Transformer based language model."""
 
 import torch
-import torch.nn.functional as F
+from einops import rearrange
 
 from megatron import get_args
 from megatron.core import mpu, tensor_parallel
@@ -50,9 +50,8 @@ def parallel_lm_logits(input_, word_embeddings_weight, parallel_output, bias=Non
 
 def get_language_model(
     config,
-    num_tokentypes,
     add_pooler,
-    encoder_attn_mask_type,
+    # encoder_attn_mask_type,
     decoder_attn_mask_type=AttnMaskType.causal,
     pre_process=True,
     post_process=True,
@@ -66,10 +65,10 @@ def get_language_model(
         config.output_layer_init_method = scaled_init_method_normal(config.init_method_std, config.num_layers)
 
     # Language model.
+    # TODO decoder_attn_mask_type! What it should be?
     language_model = СodeformerLanguageModel(
         config,
-        encoder_attn_mask_type,
-        num_tokentypes=num_tokentypes,
+        # encoder_attn_mask_type,
         decoder_attn_mask_type=decoder_attn_mask_type,
         add_pooler=add_pooler,
         pre_process=pre_process,
@@ -328,17 +327,15 @@ class СodeformerLanguageModel(MegatronModule):
     def __init__(
         self,
         config,
-        encoder_attn_mask_type,
-        num_tokentypes=0,
+        # encoder_attn_mask_type,
         decoder_attn_mask_type=AttnMaskType.causal,
         add_pooler=False,
         pre_process=True,
         post_process=True,
+        num_tokentypes=0,
     ):
         args = get_args()
         # TODO: passing share_embeddings_and_output_weights=False will not work correctly for T5 and embeddings will not be synced. Fix later for T5.
-        if args.untie_embeddings_and_output_weights:
-            assert not add_decoder
         super(СodeformerLanguageModel, self).__init__(
             share_embeddings_and_output_weights=not args.untie_embeddings_and_output_weights
         )
@@ -348,7 +345,7 @@ class СodeformerLanguageModel(MegatronModule):
         self.hidden_size = config.hidden_size
         self.num_tokentypes = num_tokentypes
         self.init_method = config.init_method
-        self.encoder_attn_mask_type = encoder_attn_mask_type
+        # self.encoder_attn_mask_type = encoder_attn_mask_type
         self.decoder_attn_mask_type = decoder_attn_mask_type
         self.add_pooler = add_pooler
         self.encoder_hidden_state = None
@@ -368,6 +365,18 @@ class СodeformerLanguageModel(MegatronModule):
             )
             self._embedding_key = "embedding"
 
+            ## TODO decide shouldn't we use shared emb
+            self.embedding_dec = Embedding(
+                self.hidden_size,
+                args.padded_vocab_size,
+                args.max_position_embeddings,
+                args.hidden_dropout,
+                config,
+                self.num_tokentypes,
+                args.embedding_weights_in_fp32,
+            )
+            self._embedding_key = "embedding_dec"
+
         # Rotary positional embeddings
         self.use_rotary_position_embeddings = args.position_embedding_type == "rope"
         if self.use_rotary_position_embeddings:
@@ -386,22 +395,23 @@ class СodeformerLanguageModel(MegatronModule):
 
         # Encoder (usually set to True, False if part of an encoder-decoder
         # architecture and in encoder-only stage).
+        # TODO self.encoder_attn_mask_type !!
         self.encoder_1 = ParallelTransformer(
             config,
             model_type=ModelType.encoder_and_decoder,
-            self_attn_mask_type=self.encoder_attn_mask_type,
+            # self_attn_mask_type=self.encoder_attn_mask_type,
             pre_process=self.pre_process,
             post_process=self.post_process,  # If postprocess, then LayerNorm is applied to the output
         )
         self._encoder_1_key = "encoder_1"
 
-        self.linear = get_linear_layer(config.hidden_size, config.hidden_size, config.init_method)
+        self.linear = get_linear_layer(args.max_sent_length, 1, config.init_method)
         self._linear_key = "linear"
 
         self.encoder_2 = ParallelTransformer(
             config,
             model_type=ModelType.encoder_and_decoder,
-            self_attn_mask_type=self.encoder_attn_mask_type,
+            # self_attn_mask_type=self.encoder_attn_mask_type,
             pre_process=self.pre_process,
             post_process=self.post_process,
         )
@@ -417,8 +427,6 @@ class СodeformerLanguageModel(MegatronModule):
         )
         self._decoder_key = "decoder"
 
-        self.decoder_key = "decoder"
-
         if self.post_process:
             # Pooler.
             if self.add_pooler:
@@ -430,6 +438,16 @@ class СodeformerLanguageModel(MegatronModule):
                     args.hidden_size, args.padded_vocab_size, config=config, init_method=self.init_method, bias=False
                 )  # Setting bias to False always to keep it consistent with embedding tying that also does not have a bias.
                 self._output_layer_key = "output_layer"
+
+            ## TODO what positions embed should we use?
+
+    def get_position_ids(self, token_ids):
+        # Create position ids
+        seq_length = token_ids.size(1)
+        position_ids = torch.arange(seq_length, dtype=torch.long, device=token_ids.device)
+        position_ids = position_ids.unsqueeze(0).expand_as(token_ids)
+
+        return position_ids
 
     def set_input_tensor(self, input_tensor):
 
@@ -465,15 +483,12 @@ class СodeformerLanguageModel(MegatronModule):
     def forward(
         self,
         enc_input_ids,
-        enc_position_ids,
-        enc_attn_mask,
-        dec_input_ids=None,
-        dec_position_ids=None,
-        dec_attn_mask=None,
-        retriever_input_ids=None,
-        retriever_position_ids=None,
-        retriever_attn_mask=None,
-        enc_dec_attn_mask=None,
+        dec_input_ids,
+        sent_nums,
+        enc_mask,
+        sent_mask,
+        enc_dec_mask,
+        dec_mask,
         tokentype_ids=None,
         inference_params=None,
         pooling_sequence_index=0,
@@ -481,9 +496,21 @@ class СodeformerLanguageModel(MegatronModule):
         output_enc_hidden=False,
     ):
 
+        # import pydevd_pycharm
+
+        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
         # Encoder embedding.
+        b = enc_input_ids.size(0)
+        # TODO replace 18 by sent length
+        enc_input_ids = rearrange(enc_input_ids, "b (s t) -> (b s) t", t=18)
+        enc_mask = rearrange(enc_mask, "b 1 s ... -> (b s) 1 ...")
+
+        # TODO Can be done more effectively, not to call function each forward call
+        enc_position_ids = self.get_position_ids(enc_input_ids)
+        dec_position_ids = self.get_position_ids(dec_input_ids)
         if self.pre_process:
             encoder_input = self.embedding(enc_input_ids, enc_position_ids, tokentype_ids=tokentype_ids)
+            decoder_input = self.embedding_dec(dec_input_ids, dec_position_ids, tokentype_ids=tokentype_ids)
         else:
             encoder_input = None
 
@@ -495,28 +522,34 @@ class СodeformerLanguageModel(MegatronModule):
             else:
                 rotary_pos_emb = self.rotary_pos_emb(self.seq_length)
 
+        # dec_mask,
+        # enc_dec_mask,
+        # sent_mask,
+
         # Run encoder.
         if enc_hidden_states is None:
-            output = self.encoder_1(
+            encoder_output = self.encoder_1(
                 encoder_input,
-                enc_attn_mask,
+                attention_mask=enc_mask,
                 inference_params=inference_params,
                 rotary_pos_emb=rotary_pos_emb,
             )
 
-            output = self.linear(output)
+            encoder_output = rearrange(encoder_output, "t (b s) d -> s b d t", b=b)
+            encoder_output = self.linear(encoder_output).squeeze(-1)
 
-            output = self.encoder_2(
-                output,
-                enc_attn_mask,
+            encoder_output = self.encoder_2(
+                encoder_output,
+                attention_mask=sent_mask,
                 inference_params=inference_params,
                 rotary_pos_emb=rotary_pos_emb,
             )
 
             output = self.decoder(
-                output,
-                enc_attn_mask,
-                encoder_output=output,
+                decoder_input,
+                attention_mask=dec_mask,
+                encoder_output=encoder_output,
+                enc_dec_attn_mask=enc_dec_mask,
                 inference_params=inference_params,
                 rotary_pos_emb=rotary_pos_emb,
             )
@@ -524,18 +557,12 @@ class СodeformerLanguageModel(MegatronModule):
         else:
             output = enc_hidden_states.to(encoder_input.dtype)
 
-        if self.post_process:
-            if self.add_pooler:
-                pooled_output = self.pooler(output, pooling_sequence_index)
-
         # output_enc_hidden refers to when we just need the encoder's
         # output. For example, it is helpful to compute
         # similarity between two sequences by average pooling
-        if self.add_pooler and self.post_process:
-            return output, pooled_output
-        else:
-            return output
+        return output
 
+    ## TODO rewrite according current archetecture
     def state_dict_for_save_checkpoint(self, prefix="", keep_vars=False):
         """For easy load."""
 
@@ -544,10 +571,15 @@ class СodeformerLanguageModel(MegatronModule):
             state_dict_[self._embedding_key] = self.embedding.state_dict_for_save_checkpoint(
                 prefix=prefix, keep_vars=keep_vars
             )
-        if self.add_encoder:
-            state_dict_[self._encoder_key] = self.encoder.state_dict_for_save_checkpoint(
-                prefix=prefix, keep_vars=keep_vars
-            )
+
+        state_dict_[self._encoder_1_key] = self.encoder_1.state_dict_for_save_checkpoint(
+            prefix=prefix, keep_vars=keep_vars
+        )
+
+        state_dict_[self._encoder_2_key] = self.encoder_2.state_dict_for_save_checkpoint(
+            prefix=prefix, keep_vars=keep_vars
+        )
+
         if self.post_process:
             if self.add_pooler:
                 state_dict_[self._pooler_key] = self.pooler.state_dict_for_save_checkpoint(
@@ -556,10 +588,7 @@ class СodeformerLanguageModel(MegatronModule):
             if self.untie_embeddings_and_output_weights:
                 state_dict_[self._output_layer_key] = self.output_layer.state_dict(prefix=prefix, keep_vars=keep_vars)
 
-        if self.add_decoder:
-            state_dict_[self._decoder_key] = self.decoder.state_dict_for_save_checkpoint(
-                prefix=prefix, keep_vars=keep_vars
-            )
+        state_dict_[self._decoder_key] = self.decoder.state_dict_for_save_checkpoint(prefix=prefix, keep_vars=keep_vars)
 
         return state_dict_
 

@@ -7,29 +7,24 @@ import torch
 from megatron import get_args
 from megatron.core import tensor_parallel
 from megatron.model.enums import AttnMaskType
+
 from megatron.model.codeformer_PL_model import parallel_lm_logits
 from megatron.model.codeformer_PL_model import get_language_model
+
+# from megatron.model.language_model import parallel_lm_logits
+# from megatron.model.language_model import get_language_model
 from megatron.model import LayerNorm
 from megatron.model.utils import openai_gelu, get_linear_layer
 from .module import MegatronModule
 
 
-def t5_extended_attention_mask(attention_mask_list):
+def extended_attention_mask(attention_mask_list):
     def attn_mask_postprocess(attn_mask):
         # [b, 1, s, s]
         extended_attention_mask = attn_mask.unsqueeze(1)
         return extended_attention_mask
 
     return [attn_mask_postprocess(attn_mask) for attn_mask in attention_mask_list]
-
-
-def t5_position_ids(token_ids):
-    # Create position ids
-    seq_length = token_ids.size(1)
-    position_ids = torch.arange(seq_length, dtype=torch.long, device=token_ids.device)
-    position_ids = position_ids.unsqueeze(0).expand_as(token_ids)
-
-    return position_ids
 
 
 class T5LMHead(MegatronModule):
@@ -55,7 +50,7 @@ class T5LMHead(MegatronModule):
 
 
 class CodeformerModel(MegatronModule):
-    """T5 Language model."""
+    """CodeformerModel model."""
 
     def __init__(
         self, config, num_tokentypes=0, add_binary_head=False, parallel_output=True, pre_process=True, post_process=True
@@ -70,16 +65,15 @@ class CodeformerModel(MegatronModule):
 
         self.language_model, self._language_model_key = get_language_model(
             config=config,
-            num_tokentypes=num_tokentypes,  ## TODO what is toke_type?
             add_pooler=False,
-            encoder_attn_mask_type=AttnMaskType.padding,
+            # encoder_attn_mask_type=AttnMaskType.padding,
             pre_process=self.pre_process,
             post_process=self.post_process,
         )
 
         self.initialize_word_embeddings()
         ## TODO redo postprocessing
-        if self.post_process and self.add_decoder:
+        if self.post_process:
             self.lm_head = T5LMHead(self.shared_embedding_or_output_weight().size(0), parallel_output)
             self._lm_head_key = "lm_head"
 
@@ -91,37 +85,41 @@ class CodeformerModel(MegatronModule):
         self,
         encoder_input_ids,
         decoder_input_ids,
-        encoder_attn_mask,
-        decoder_attn_mask,
-        encoder_decoder_attn_mask,
+        sent_nums,
+        enc_mask,
+        sent_mask,
+        enc_dec_mask,
+        dec_mask,
         tokentype_ids=None,
         lm_labels=None,
         enc_hidden_states=None,
     ):
 
         # Converting the attention masks to proper parameter settings
-        encoder_attn_mask, decoder_attn_mask, encoder_decoder_attn_mask = t5_extended_attention_mask(
-            [encoder_attn_mask, decoder_attn_mask, encoder_decoder_attn_mask]
+        # import pydevd_pycharm
+
+        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
+        enc_mask, sent_mask, enc_dec_mask, dec_mask = extended_attention_mask(
+            [enc_mask, sent_mask, enc_dec_mask, dec_mask]
         )
-        ## TODO what positions embed?
-        encoder_position_ids = t5_position_ids(encoder_input_ids)
-        decoder_position_ids = t5_position_ids(decoder_input_ids)
 
         lm_output = self.language_model(
             encoder_input_ids,
-            encoder_position_ids,
-            encoder_attn_mask,
             decoder_input_ids,
-            decoder_position_ids,
-            decoder_attn_mask,
-            encoder_decoder_attn_mask,
+            sent_nums,
+            enc_mask=enc_mask,
+            sent_mask=sent_mask,
+            enc_dec_mask=enc_dec_mask,
+            dec_mask=dec_mask,
+            # decoder_input_ids = t5_position_ids(decoder_input_ids), ## TODO Check this one!
             tokentype_ids=tokentype_ids,
             enc_hidden_states=enc_hidden_states,
         )
 
-        if self.post_process and self.add_decoder:
-            decoder_output, encoder_output = lm_output
+        if self.post_process:
+            decoder_output = lm_output
             # Output. [s, b, h]
+            # TODO check lm_head
             lm_logits = self.lm_head(decoder_output, self.shared_embedding_or_output_weight())
 
             if lm_labels is None:
@@ -138,14 +136,11 @@ class CodeformerModel(MegatronModule):
                 # [s b] => [b s]
                 lm_loss = lm_loss.transpose(0, 1).contiguous()
             return lm_loss
-        elif self.add_decoder and not self.add_encoder:
-            decoder_output, encoder_output = lm_output
-            return decoder_output
         else:
-            encoder_output = lm_output
-            return encoder_output
+            decoder_output = lm_output
+            return decoder_output
 
-    ## TODO This should be adjusted
+    ## TODO rewrite according current archetecture
     def state_dict_for_save_checkpoint(self, prefix="", keep_vars=False):
         """For easy load when model is combined with other heads,
         add an extra key."""
@@ -154,12 +149,12 @@ class CodeformerModel(MegatronModule):
         state_dict_[self._language_model_key] = self.language_model.state_dict_for_save_checkpoint(
             prefix=prefix, keep_vars=keep_vars
         )
-        if self.post_process and self.add_decoder:
+        if self.post_process:
             state_dict_[self._lm_head_key] = self.lm_head.state_dict_for_save_checkpoint(
                 prefix=prefix, keep_vars=keep_vars
             )
         # Save word_embeddings.
-        if self.post_process and not self.pre_process and self.add_decoder:
+        if self.post_process and not self.pre_process:
             state_dict_[self._word_embeddings_for_head_key] = self.word_embeddings.state_dict(
                 prefix=prefix, keep_vars=keep_vars
             )
@@ -169,8 +164,8 @@ class CodeformerModel(MegatronModule):
         """Customized load."""
 
         self.language_model.load_state_dict(state_dict[self._language_model_key], strict=strict)
-        if self.post_process and self.add_decoder:
+        if self.post_process:
             self.lm_head.load_state_dict(state_dict[self._lm_head_key], strict=strict)
         # Load word embeddings.
-        if self.post_process and not self.pre_process and self.add_decoder:
+        if self.post_process and not self.pre_process:
             self.word_embeddings.load_state_dict(state_dict[self._word_embeddings_for_head_key], strict=strict)
