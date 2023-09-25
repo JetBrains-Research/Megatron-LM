@@ -2,13 +2,12 @@
 
 """Codeformer Style dataset. Build on the basis of T5 dataset"""
 
-import collections
-
 import numpy as np
 import torch
 
 from megatron import get_tokenizer
 from megatron.data.dataset_utils import create_masked_lm_predictions, get_samples_mapping
+from codeformer_utils.vendor.codeformer import AstCodeSplitter
 
 import pydevd_pycharm
 
@@ -49,10 +48,12 @@ class CodeformerDataset(torch.utils.data.Dataset):
         # Dataset.
         self.indexed_dataset = indexed_dataset
         self.indexed_labels = indexed_labels
-        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
+        pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
 
         # Build the samples mapping.
         ## TODO Here we need to realize train-val-test split!
+        # TODO may be use helpers.build_mapping for building sample mapping
+
         self.samples_mapping = get_samples_mapping(
             self.indexed_dataset,
             data_prefix,
@@ -82,8 +83,7 @@ class CodeformerDataset(torch.utils.data.Dataset):
         return len(self.indexed_dataset.doc_idx) - 1
 
     def __getitem__(self, idx):
-        # if idx == 655:
-        #     pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
+        pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
         ## TODO 2. Check about EOS/BOS tokens
         # with open("some_output.txt", mode="a") as f:
         #     f.write(str(idx))
@@ -97,6 +97,7 @@ class CodeformerDataset(torch.utils.data.Dataset):
             sample.append(sentence)
         label = self.indexed_labels[idx]
         # self.max_doc_length = (self.max_doc_length // self.max_sent_length) * self.max_sent_length
+
         return build_training_sample(
             sample,
             label,

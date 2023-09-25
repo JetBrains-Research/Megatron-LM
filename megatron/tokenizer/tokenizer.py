@@ -560,11 +560,14 @@ class _HFTokenizer(AbstractTokenizer):
     def inv_vocab(self):
         return self.decoder
 
-    def tokenize(self, text):
-        return self.tokenizer.encode(text)
+    def tokenize(self, text, **kwargs):
+        return self.tokenizer.encode(text, **kwargs)
 
     def detokenize(self, token_ids):
         return self.tokenizer.decode(token_ids)
+
+    def batch_decode(self, token_ids, **kwargs):
+        return self.tokenizer.batch_decode(token_ids, **kwargs)
 
     @property
     def bos(self):
@@ -572,7 +575,8 @@ class _HFTokenizer(AbstractTokenizer):
 
     @property
     def bos_token_id(self):
-        candidate = self.tokenizer.eos_token_id
+        # Note TODO here was candidate = self.tokenizer.eos_token_id. Why?
+        candidate = self.tokenizer.bos_token_id
         return self._check_token_candidate(candidate)
 
     @property

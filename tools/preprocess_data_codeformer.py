@@ -14,6 +14,8 @@ import glob
 import torch
 import numpy as np
 import multiprocessing
+from codeformer_utils.vendor.codeformer import AstCodeSplitter
+
 import pydevd_pycharm
 
 try:
@@ -61,71 +63,89 @@ class Encoder(object):
     def initializer(self):
         # Use Encoder class as a container for global data
         Encoder.tokenizer = build_tokenizer(self.args)
-        if self.args.split_sentences:
-            if not nltk_available:
-                print("NLTK is not available to split sentences.")
-                exit()
-            library = "tokenizers/punkt/{}.pickle".format(self.args.lang)
-            splitter = nltk.load(library)
-            if self.args.keep_newlines:
-                # this prevents punkt from eating newlines after sentences
-                Encoder.splitter = nltk.tokenize.punkt.PunktSentenceTokenizer(
-                    train_text=splitter._params, lang_vars=CustomLanguageVars()
-                )
-            else:
-                Encoder.splitter = splitter
+        config = {
+            "programming_language": "java",
+            "path_to_tree_sitter": "/workspace/megatron/codeformer_utils/vendor/tree-sitter-java",
+            "max_code_parts": 4096,
+            "max_subsequence_size": 16,
+            "max_subsequences_number": 384,
+        }
+        Encoder.splitter_ast = AstCodeSplitter(config, Encoder.tokenizer)
+        # if self.args.split_sentences:
+        #     if not nltk_available:
+        #         print("NLTK is not available to split sentences.")
+        #         exit()
+        #     library = "tokenizers/punkt/{}.pickle".format(self.args.lang)
+        #     splitter = nltk.load(library)
+        #     if self.args.keep_newlines:
+        #         # this prevents punkt from eating newlines after sentences
+        #         Encoder.splitter = nltk.tokenize.punkt.PunktSentenceTokenizer(
+        #             train_text=splitter._params, lang_vars=CustomLanguageVars()
+        #         )
+        #     else:
+        #         Encoder.splitter = splitter
+        #
+        # else:
+        #     Encoder.splitter = IdentitySplitter()
 
-        else:
-            Encoder.splitter = IdentitySplitter()
-
-    def split(self, json_line):
+    def split_and_tokenize(self, json_line):
         # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
         # TODO here we should put AST splitter
         data = json.loads(json_line)
-        output = {}
-        for key in self.args.json_keys:
-            text = data[key]
-            max_len = 1000000
-            # tokens_list = [Encoder.splitter.tokenize(text[i : i + max_len]) for i in range(0, len(text), max_len)]
-            # output[key] = [tokens for partial in tokens_list for tokens in partial] # flattens the list
-            if key == "label":
-                ## TODO Add max_tokenize_len to config
-                output[key] = text.replace("|", " ")
-            if key == "code":
-                tokens_list = [text[i : i + 100] for i in range(0, len(text), 100)]
-                output[key] = tokens_list
-        return json.dumps(output), len(json_line)
+        tree_split_res =  Encoder.splitter_ast.split(data['code'])[0]
+        label_tokenized = Encoder.tokenizer.tokenize(data['label'].replace("|", " "))
+        # TODO do it properly
+        label_tokenized = label_tokenized[:7]
+        label_tokenized = label_tokenized + (7-len(label_tokenized))*[0]
+        return tree_split_res, label_tokenized
 
     def encode(self, json_line):
         # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
-        data = json.loads(json_line)
         ids = {}
         lens = {}
-        for key in self.args.json_keys:
+        ids['code'], ids['label'] = self.split_and_tokenize(json_line)
+        lens['label'] = [len(ids['code'])]
+        lens["code"] = [len(sentence) for sentence in ids['code']]
 
-            text = data[key]
+        #             sentences = [text]
+        #         doc_ids = []
+        #         sentence_lens = []
+        #         for sentence in sentences:
+        #             sentence_ids = Encoder.tokenizer.tokenize(sentence)
+        #             if len(sentence_ids) > 0:
+        #                 doc_ids.extend(sentence_ids)
+        #                 sentence_lens.append(len(sentence_ids))
+        #         if len(doc_ids) > 0 and self.args.append_eod:
+        #             doc_ids.append(Encoder.tokenizer.eod)
+        #             sentence_lens[-1] += 1
+        #         ids[key] = doc_ids
+        #         lens[key] = sentence_lens
 
-            if key == "label":
-                label_ids = Encoder.tokenizer.tokenize(text)
-                ids[key] = label_ids
-                lens[key] = [len(label_ids)]
-            else:
-                if isinstance(text, list):
-                    sentences = text
-                else:
-                    sentences = [text]
-                doc_ids = []
-                sentence_lens = []
-                for sentence in sentences:
-                    sentence_ids = Encoder.tokenizer.tokenize(sentence)
-                    if len(sentence_ids) > 0:
-                        doc_ids.extend(sentence_ids)
-                        sentence_lens.append(len(sentence_ids))
-                if len(doc_ids) > 0 and self.args.append_eod:
-                    doc_ids.append(Encoder.tokenizer.eod)
-                    sentence_lens[-1] += 1
-                ids[key] = doc_ids
-                lens[key] = sentence_lens
+        # for key in self.args.json_keys:
+        #
+        #     text = data[key]
+        #
+        #     if key == "label":
+        #         label_ids = Encoder.tokenizer.tokenize(text)
+        #         ids[key] = label_ids
+        #         lens[key] = [len(label_ids)]
+        #     else:
+        #         if isinstance(text, list):
+        #             sentences = text
+        #         else:
+        #             sentences = [text]
+        #         doc_ids = []
+        #         sentence_lens = []
+        #         for sentence in sentences:
+        #             sentence_ids = Encoder.tokenizer.tokenize(sentence)
+        #             if len(sentence_ids) > 0:
+        #                 doc_ids.extend(sentence_ids)
+        #                 sentence_lens.append(len(sentence_ids))
+        #         if len(doc_ids) > 0 and self.args.append_eod:
+        #             doc_ids.append(Encoder.tokenizer.eod)
+        #             sentence_lens[-1] += 1
+        #         ids[key] = doc_ids
+        #         lens[key] = sentence_lens
         return ids, lens, len(json_line)
 
 
@@ -161,9 +181,9 @@ class Partition(object):
         fin.close()
         fout.close()
 
-    def process_json_file(self, file_name):
+    def process_json_file(self, file_name, output_prefix):
         # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
-        input_file_name, output_prefix = file_name
+        input_file_name, output_prefix = file_name, output_prefix[:-6]
         print("Opening", input_file_name)
         fin = open(input_file_name, "r", encoding="utf-8")
 
@@ -293,11 +313,11 @@ def check_files_exist(in_ss_out_names, key, num_partitions):
 def main():
     args = get_args()
 
-    if args.split_sentences:
-        if nltk_available:
-            nltk.download("punkt", quiet=True)
-        else:
-            raise Exception("nltk library required for sentence splitting is not available.")
+    # if args.split_sentences:
+    #     if nltk_available:
+    #         nltk.download("punkt", quiet=True)
+    #     else:
+    #         raise Exception("nltk library required for sentence splitting is not available.")
 
     in_ss_out_names = []
     if args.partitions == 1:  # Number of files in partition
@@ -368,30 +388,31 @@ def main():
     partition = Partition(args, args.workers // args.partitions)
 
     # check to see if paritions with split sentences already created
-    split_sentences_present = check_files_exist(in_ss_out_names, "sentence_split", args.partitions)
+    # split_sentences_present = check_files_exist(in_ss_out_names, "sentence_split", args.partitions)
 
     # split sentences in partition files
-    if args.split_sentences and not split_sentences_present:
-        processes = []
-        for name in in_ss_out_names:
-            p = multiprocessing.Process(
-                target=partition.split_sentences, args=((name["partition"], name["sentence_split"]),)
-            )
-            p.start()
-            processes.append(p)
-
-        for p in processes:
-            p.join()
-
-        if args.partitions == 1:
-            return
-
+    # if args.split_sentences and not split_sentences_present:
+    #     processes = []
+    #     for name in in_ss_out_names:
+    #         p = multiprocessing.Process(
+    #             target=partition.split_sentences, args=((name["partition"], name["sentence_split"]),)
+    #         )
+    #         p.start()
+    #         processes.append(p)
+    #
+    #     for p in processes:
+    #         p.join()
+    #
+    #     if args.partitions == 1:
+    #         return
+    # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
     # encode partition files in parallel
     processes = []
-    input_key = "sentence_split" if args.split_sentences else "partition"
+    # input_key = "sentence_split" if args.split_sentences else "partition"
     for name in in_ss_out_names:
+        # TODO args=((name["partition"], name["partition"]) can be simplified by altering process_json_file
         p = multiprocessing.Process(
-            target=partition.process_json_file, args=((name[input_key], name["output_prefix"]),)
+            target=partition.process_json_file, args=((name["partition"], name["partition"]))
         )
         p.start()
         processes.append(p)
