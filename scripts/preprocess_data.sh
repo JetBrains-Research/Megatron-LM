@@ -1,8 +1,5 @@
-source /workspace/megatron/configs/config_local.sh
-
-DATA_ARGS="
-    --json-keys label code \
-"
+source /workspace/megatron/configs/config_local_path.sh
+source /workspace/megatron/configs/config_model.sh
 
 python "${MEGATRON_PATH}tools/preprocess_data_codeformer.py" \
        --input ${DATA_FILE_PATH} \
@@ -12,7 +9,8 @@ python "${MEGATRON_PATH}tools/preprocess_data_codeformer.py" \
        --tokenizer-model "Salesforce/codet5p-220m"\
        --workers 8\
        --split-sentences \
-       --json-keys label code
+       --json-keys label code \
+       $DATA_PROC_ARGS
        #$DATA_ARGS
 # my-bert
 # --tokenizer-type BertWordPieceLowerCase \

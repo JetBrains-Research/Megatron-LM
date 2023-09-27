@@ -26,9 +26,7 @@ class CodeformerDataset(torch.utils.data.Dataset):
         masked_lm_prob,
         max_seq_length,
         max_seq_length_dec,
-        max_doc_length,
         max_sent_num,
-        max_sent_length,
         max_label_length,
         short_seq_prob,
         seed,
@@ -40,15 +38,13 @@ class CodeformerDataset(torch.utils.data.Dataset):
         self.masked_lm_prob = masked_lm_prob
         self.max_seq_length = max_seq_length
         self.max_seq_length_dec = max_seq_length_dec
-        self.max_doc_length = max_doc_length
         self.max_sent_num = max_sent_num
-        self.max_sent_length = max_sent_length
         self.max_label_length = max_label_length
 
         # Dataset.
         self.indexed_dataset = indexed_dataset
         self.indexed_labels = indexed_labels
-        pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
+        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
 
         # Build the samples mapping.
         ## TODO Here we need to realize train-val-test split!
@@ -83,25 +79,20 @@ class CodeformerDataset(torch.utils.data.Dataset):
         return len(self.indexed_dataset.doc_idx) - 1
 
     def __getitem__(self, idx):
-        pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
-        ## TODO 2. Check about EOS/BOS tokens
-        # with open("some_output.txt", mode="a") as f:
-        #     f.write(str(idx))
-        #     f.write("\n")
+        # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
         doc_idx_start = self.indexed_dataset.doc_idx[idx]
         doc_idx_end = self.indexed_dataset.doc_idx[idx + 1]
         sample = []
         for index in range(doc_idx_start, doc_idx_end):
-            sentence = self.indexed_dataset[index][: self.max_sent_length]
-            sentence = np.pad(sentence, (self.pad_id, self.max_sent_length - len(sentence)))
+            # I do not do any truncation or padding here
+            # everything is already done in data preprocessing
+            sentence = self.indexed_dataset[index]
             sample.append(sentence)
         label = self.indexed_labels[idx]
-        # self.max_doc_length = (self.max_doc_length // self.max_sent_length) * self.max_sent_length
 
         return build_training_sample(
             sample,
             label,
-            self.max_label_length,
             self.max_sent_num,
             self.cls_id,
             self.sep_id,
@@ -113,16 +104,13 @@ class CodeformerDataset(torch.utils.data.Dataset):
 def build_training_sample(
     sample,
     label,
-    max_label_length,
     max_sent_num,
     cls_id,
     sep_id,
     mask_id,
     pad_id,
-    masked_lm_prob=None,
     bos_id=None,
     eos_id=None,
-    sentinel_tokens=None,
 ):
     """Build training sample.
     ## TODO rewrite doc
@@ -140,14 +128,15 @@ def build_training_sample(
         bos_id: start of decoder example id
         eos_id: end of generation id
     """
+    # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
     pad_id = 0
     sample = sample[:max_sent_num]
     num_sent = len(sample)
     # Padding.
     sample = sample + (max_sent_num - num_sent) * [0 * sample[0]]
     flattened_sample = np.concatenate(sample, axis=0, dtype=np.int64)
-    label = label[:max_label_length]
-    label = np.pad(label, (pad_id, max_label_length - len(label))).astype(np.int64)
+    # label is already padded
+    label = np.array(label, dtype=np.int64)
     loss_mask = (label != pad_id).astype(np.int64)
 
     # Create attention masks and padding them

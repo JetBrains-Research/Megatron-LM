@@ -1214,8 +1214,13 @@ class NoopTransformerLayer(MegatronModule):
         return hidden_states.clone()
 
 
-def _get_num_layers(args, model_type, is_decoder=False):
+def _get_num_layers(args, model_type, is_decoder=False, is_codeformer=False, enc_num = 1):
     """Compute the number of transformer layers resident on the current rank."""
+    if is_codeformer:
+        if enc_num == 1:
+            args.encoder_num_layers = args.encoder_1_num_layers
+        if enc_num == 2:
+            args.encoder_num_layers = args.encoder_2_num_layers
     is_encoder_and_decoder_model = (model_type == ModelType.encoder_and_decoder)
     if model_type == ModelType.retro_encoder:
         num_layers = args.retro_encoder_layers
@@ -1289,7 +1294,7 @@ class ParallelTransformer(MegatronModule):
     """Transformer class."""
 
     def __init__(self, config,
-                 model_type, layer_type=LayerType.encoder,
+                 model_type, layer_type=LayerType.encoder, is_codeformer=False, enc_num = 1,
                  self_attn_mask_type=AttnMaskType.padding,
                  post_layer_norm=True,
                  pre_process=True,
@@ -1309,6 +1314,17 @@ class ParallelTransformer(MegatronModule):
         self.drop_path_rate = drop_path_rate
         self.transformer_impl = args.transformer_impl
         self.retro_add_retriever = args.retro_add_retriever
+
+        if is_codeformer:
+            if layer_type == LayerType.encoder:
+                if enc_num == 1:
+                    seq_length = args.max_sent_length + 2
+                if enc_num == 2:
+                    seq_length = args.max_sent_num
+            else:
+                seq_length = args.max_label_length + 2
+        else:
+            seq_length = args.seq_length
 
         # Store activation checkpoiting flag.
         self.recompute_granularity = config.recompute_granularity
@@ -1369,7 +1385,7 @@ class ParallelTransformer(MegatronModule):
 
         # Number of layers.
         self.num_layers = _get_num_layers(args, model_type,
-                                          layer_type==LayerType.decoder)
+                                          layer_type==LayerType.decoder, is_codeformer=is_codeformer, enc_num = enc_num)
 
         self.drop_path_rates = [
             rate.item() for rate in
@@ -1426,7 +1442,7 @@ class ParallelTransformer(MegatronModule):
                     fuse_wgrad_accumulation=config.gradient_accumulation_fusion,
                     apply_query_key_layer_scaling=config.apply_query_key_layer_scaling,
                     attention_softmax_in_fp32=config.attention_softmax_in_fp32,
-                    seq_length=args.seq_length,
+                    seq_length=seq_length,
                     micro_batch_size=args.micro_batch_size,
                     sequence_parallel=config.sequence_parallel,
                     params_dtype=config.params_dtype,

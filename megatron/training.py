@@ -689,9 +689,15 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
 
     # Write args to tensorboard
     write_args_to_tensorboard()
-
+    # import pydevd_pycharm
+    
+    # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
     # Init Weights and Biases
-    init_wandb()
+    if torch.distributed.is_initialized():
+        if torch.distributed.get_rank() == 0 and args.local_rank == 0:
+            init_wandb()
+    else:
+        init_wandb()
 
     # Turn on training mode which enables dropout.
     for model_module in model:
@@ -740,11 +746,18 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
         params_norm = None
         if args.log_params_norm:
             params_norm = calc_params_l2_norm(model)
-        report_memory_flag = training_log(loss_dict, total_loss_dict,
-                                          optimizer.param_groups[0]['lr'],
-                                          iteration, loss_scale,
-                                          report_memory_flag, skipped_iter,
-                                          grad_norm, params_norm, num_zeros_in_grad)
+        report_memory_flag = training_log(
+                    loss_dict,
+                    total_loss_dict,
+                    optimizer.param_groups[0]["lr"],
+                    iteration,
+                    loss_scale,
+                    report_memory_flag,
+                    skipped_iter,
+                    grad_norm,
+                    params_norm,
+                    num_zeros_in_grad,
+                )
 
         # Autoresume
         if args.adlr_autoresume and \

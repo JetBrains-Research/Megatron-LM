@@ -16,6 +16,7 @@ from megatron.utils import average_losses_across_data_parallel_group
 from megatron.arguments import core_transformer_config_from_args
 import pydevd_pycharm
 
+# TODO delete all pydevd_pycharm instances at the end
 # import pydevd_pycharm
 # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
 
@@ -65,7 +66,8 @@ except Exception as e:
 
 def model_provider(pre_process=True, post_process=True, add_encoder=True, add_decoder=True):
     """Build the model."""
-
+    # args = get_args()
+    # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
     print_rank_0("building Codeformer model ...")
     config = core_transformer_config_from_args(get_args())
     model = CodeformerModel(
@@ -86,10 +88,7 @@ def get_batch(data_iterator):
 
     # Broadcast data.
     if data_iterator is not None:
-        # for i in range(41):
-        #     print(i)
         data = next(data_iterator)
-        # data = next(data_iterator)
     else:
         data = None
     data_b = tensor_parallel.broadcast_data(keys, data, datatype)
@@ -120,7 +119,6 @@ def loss_func(loss_mask, output_tensor):
 
 def forward_step(data_iterator, model):
     """Forward step."""
-    args = get_args()
     timers = get_timers()
 
     # Get the batch.
@@ -131,7 +129,7 @@ def forward_step(data_iterator, model):
     # Forward model lm_labels
     output_tensor = model(
         docs_enc,
-        labels,  ## TODO remove it
+        labels,
         sent_nums,
         sent_mask=sent_mask,
         enc_mask=enc_mask,
@@ -153,19 +151,18 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
         data_prefix=args.data_path,
         splits_string=args.split,
         train_valid_test_num_samples=train_val_test_num_samples,
-        max_seq_length=args.encoder_seq_length,
+        max_seq_length=args.max_sent_length,
         max_seq_length_dec=args.decoder_seq_length,
         seed=args.seed,
         skip_warmup=(not args.mmap_warmup),
         dataset_type="codeformer",
     )
-    print_rank_0("> finished creating T5 datasets ...")
+    print_rank_0("> finished creating CodeFormer datasets ...")
 
     return train_ds, valid_ds, test_ds
 
 
 if __name__ == "__main__":
-
     pretrain(
         train_valid_test_datasets_provider,
         model_provider,

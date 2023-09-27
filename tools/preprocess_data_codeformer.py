@@ -63,89 +63,43 @@ class Encoder(object):
     def initializer(self):
         # Use Encoder class as a container for global data
         Encoder.tokenizer = build_tokenizer(self.args)
+        # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
+        # TODO what is max_code_parts?
         config = {
-            "programming_language": "java",
-            "path_to_tree_sitter": "/workspace/megatron/codeformer_utils/vendor/tree-sitter-java",
+            "programming_language": self.args.language,
+            "path_to_tree_sitter": f"{self.args.tree_sitter_path}/tree-sitter-{self.args.language}",
             "max_code_parts": 4096,
-            "max_subsequence_size": 16,
-            "max_subsequences_number": 384,
+            "max_subsequence_size": self.args.max_sent_length,
+            "max_subsequences_number": self.args.max_sent_num,
         }
+
         Encoder.splitter_ast = AstCodeSplitter(config, Encoder.tokenizer)
-        # if self.args.split_sentences:
-        #     if not nltk_available:
-        #         print("NLTK is not available to split sentences.")
-        #         exit()
-        #     library = "tokenizers/punkt/{}.pickle".format(self.args.lang)
-        #     splitter = nltk.load(library)
-        #     if self.args.keep_newlines:
-        #         # this prevents punkt from eating newlines after sentences
-        #         Encoder.splitter = nltk.tokenize.punkt.PunktSentenceTokenizer(
-        #             train_text=splitter._params, lang_vars=CustomLanguageVars()
-        #         )
-        #     else:
-        #         Encoder.splitter = splitter
-        #
-        # else:
-        #     Encoder.splitter = IdentitySplitter()
 
     def split_and_tokenize(self, json_line):
         # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
-        # TODO here we should put AST splitter
         data = json.loads(json_line)
-        tree_split_res =  Encoder.splitter_ast.split(data['code'])[0]
-        label_tokenized = Encoder.tokenizer.tokenize(data['label'].replace("|", " "))
-        # TODO do it properly
-        label_tokenized = label_tokenized[:7]
-        label_tokenized = label_tokenized + (7-len(label_tokenized))*[0]
+        try:
+            tree_split_res = Encoder.splitter_ast.split(data["code"])[0]
+        except:
+            # TODO once I had an error, Encoder.splitter_ast.split(data['code']) returning None. But it did not replicated. Need to observe
+            print("something wrong")
+            tree_split_res = None
+        label_tokenized = Encoder.tokenizer.tokenize(
+            data["label"].replace("|", " "),
+            padding="max_length",
+            truncation=True,
+            max_length=self.args.max_label_length + 2,  # Accounts for BOS and EOS tokens
+        )
         return tree_split_res, label_tokenized
 
     def encode(self, json_line):
         # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
         ids = {}
         lens = {}
-        ids['code'], ids['label'] = self.split_and_tokenize(json_line)
-        lens['label'] = [len(ids['code'])]
-        lens["code"] = [len(sentence) for sentence in ids['code']]
+        ids["code"], ids["label"] = self.split_and_tokenize(json_line)
+        lens["label"] = [len(ids["label"])]
+        lens["code"] = [len(sentence) for sentence in ids["code"]]
 
-        #             sentences = [text]
-        #         doc_ids = []
-        #         sentence_lens = []
-        #         for sentence in sentences:
-        #             sentence_ids = Encoder.tokenizer.tokenize(sentence)
-        #             if len(sentence_ids) > 0:
-        #                 doc_ids.extend(sentence_ids)
-        #                 sentence_lens.append(len(sentence_ids))
-        #         if len(doc_ids) > 0 and self.args.append_eod:
-        #             doc_ids.append(Encoder.tokenizer.eod)
-        #             sentence_lens[-1] += 1
-        #         ids[key] = doc_ids
-        #         lens[key] = sentence_lens
-
-        # for key in self.args.json_keys:
-        #
-        #     text = data[key]
-        #
-        #     if key == "label":
-        #         label_ids = Encoder.tokenizer.tokenize(text)
-        #         ids[key] = label_ids
-        #         lens[key] = [len(label_ids)]
-        #     else:
-        #         if isinstance(text, list):
-        #             sentences = text
-        #         else:
-        #             sentences = [text]
-        #         doc_ids = []
-        #         sentence_lens = []
-        #         for sentence in sentences:
-        #             sentence_ids = Encoder.tokenizer.tokenize(sentence)
-        #             if len(sentence_ids) > 0:
-        #                 doc_ids.extend(sentence_ids)
-        #                 sentence_lens.append(len(sentence_ids))
-        #         if len(doc_ids) > 0 and self.args.append_eod:
-        #             doc_ids.append(Encoder.tokenizer.eod)
-        #             sentence_lens[-1] += 1
-        #         ids[key] = doc_ids
-        #         lens[key] = sentence_lens
         return ids, lens, len(json_line)
 
 
@@ -260,6 +214,12 @@ def get_args():
     )
     group = parser.add_argument_group(title="output data")
     group.add_argument("--output-prefix", type=str, required=True, help="Path to binary output file without suffix")
+
+    group.add_argument("--language", type=str, default=None, help="Code dataset language.")
+    group.add_argument("--tree-sitter-path", type=str, default=None, help="Path to the tree sitter vocab.")
+    group.add_argument("--max-sent-num", type=int, default=None, help="Max number of trees in doc (method).")
+    group.add_argument("--max-sent-length", type=int, default=None, help="Max len of subsequence tree.")
+    group.add_argument("--max-label-length", type=int, default=None, help="Max len of label (method name).")
 
     group = parser.add_argument_group(title="runtime")
     group.add_argument(
@@ -410,10 +370,7 @@ def main():
     processes = []
     # input_key = "sentence_split" if args.split_sentences else "partition"
     for name in in_ss_out_names:
-        # TODO args=((name["partition"], name["partition"]) can be simplified by altering process_json_file
-        p = multiprocessing.Process(
-            target=partition.process_json_file, args=((name["partition"], name["partition"]))
-        )
+        p = multiprocessing.Process(target=partition.process_json_file, args=((name["partition"], name["partition"])))
         p.start()
         processes.append(p)
 

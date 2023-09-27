@@ -27,7 +27,7 @@ def extended_attention_mask(attention_mask_list):
     return [attn_mask_postprocess(attn_mask) for attn_mask in attention_mask_list]
 
 
-class T5LMHead(MegatronModule):
+class LMHead(MegatronModule):
     """Masked LM head for T5
 
     Arguments:
@@ -36,7 +36,7 @@ class T5LMHead(MegatronModule):
     """
 
     def __init__(self, mpu_vocab_size, parallel_output):
-        super(T5LMHead, self).__init__()
+        super(LMHead, self).__init__()
 
         self.bias = torch.nn.Parameter(torch.zeros(mpu_vocab_size))
         self.bias.model_parallel = True
@@ -53,7 +53,15 @@ class CodeformerModel(MegatronModule):
     """CodeformerModel model."""
 
     def __init__(
-        self, config, num_tokentypes=0, add_binary_head=False, parallel_output=True, pre_process=True, post_process=True
+        self,
+        config,
+        num_tokentypes=0,
+        add_binary_head=False,
+        parallel_output=True,
+        add_encoder=True,
+        add_decoder=True,
+        pre_process=True,
+        post_process=True,
     ):
         super().__init__(config=config)
         args = get_args()
@@ -66,15 +74,15 @@ class CodeformerModel(MegatronModule):
         self.language_model, self._language_model_key = get_language_model(
             config=config,
             add_pooler=False,
-            # encoder_attn_mask_type=AttnMaskType.padding,
+            add_encoder=add_encoder,
+            add_decoder=add_decoder,
             pre_process=self.pre_process,
             post_process=self.post_process,
         )
 
         self.initialize_word_embeddings()
-        ## TODO redo postprocessing
         if self.post_process:
-            self.lm_head = T5LMHead(self.shared_embedding_or_output_weight().size(0), parallel_output)
+            self.lm_head = LMHead(self.shared_embedding_or_output_weight().size(0), parallel_output)
             self._lm_head_key = "lm_head"
 
     def set_input_tensor(self, input_tensor):
@@ -111,7 +119,6 @@ class CodeformerModel(MegatronModule):
             sent_mask=sent_mask,
             enc_dec_mask=enc_dec_mask,
             dec_mask=dec_mask,
-            # decoder_input_ids = t5_position_ids(decoder_input_ids), ## TODO Check this one!
             tokentype_ids=tokentype_ids,
             enc_hidden_states=enc_hidden_states,
         )
@@ -119,7 +126,6 @@ class CodeformerModel(MegatronModule):
         if self.post_process:
             decoder_output = lm_output
             # Output. [s, b, h]
-            # TODO check lm_head
             lm_logits = self.lm_head(decoder_output, self.shared_embedding_or_output_weight())
 
             if lm_labels is None:

@@ -157,11 +157,11 @@ def validate_args(args, defaults={}):
         assert args.pipeline_model_parallel_size > 2, (
             "pipeline-model-parallel size should be greater than 2 with " "interleaved schedule"
         )
-        assert args.num_layers % args.num_layers_per_virtual_pipeline_stage == 0, (
+        assert args.encoder_1_num_layers % args.num_layers_per_virtual_pipeline_stage == 0, (
             "number of layers is not divisible by number of layers per virtual " "pipeline stage"
         )
         args.virtual_pipeline_model_parallel_size = (
-            args.num_layers // args.transformer_pipeline_model_parallel_size
+            args.encoder_1_num_layers // args.transformer_pipeline_model_parallel_size
         ) // args.num_layers_per_virtual_pipeline_stage
     else:
         args.virtual_pipeline_model_parallel_size = None
@@ -224,11 +224,20 @@ def validate_args(args, defaults={}):
             assert args.lr_warmup_samples == 0, "can only specify one of lr-warmup-fraction " "and lr-warmup-samples"
 
     if args.num_layers is not None:
-        assert args.encoder_num_layers is None, "cannot have both num-layers and encoder-num-layers specified"
+        assert args.encoder_1_num_layers is None, "cannot have both num-layers and encoder-num-layers specified"
+        assert args.encoder_2_num_layers is None, "cannot have both num-layers and encoder-num-layers specified"
         args.encoder_num_layers = args.num_layers
+        args.encoder_1_num_layers = args.num_layers
+        args.encoder_2_num_layers = args.num_layers
     else:
-        assert args.encoder_num_layers is not None, "either num-layers or encoder-num-layers should be specified"
-        args.num_layers = args.encoder_num_layers
+        enc_n_layer_given = args.encoder_num_layers is not None
+        enc_1_n_layer_given = args.encoder_1_num_layers is not None
+        enc_2_n_layer_given = args.encoder_1_num_layers is not None
+        enc_cf_n_layer_given = enc_1_n_layer_given and enc_2_n_layer_given
+        assert enc_n_layer_given or enc_cf_n_layer_given, "either num-layers or encoder-num-layers should be specified"
+        layers_nums = [args.encoder_1_num_layers, args.encoder_2_num_layers, args.decoder_num_layers]
+        # We do not use args.num_layers, but I keep it here to keep integrity of the project.
+        args.num_layers = max(layers_nums)
 
     # Check required arguments.
     required_args = ["num_layers", "hidden_size", "num_attention_heads", "max_position_embeddings"]
@@ -259,7 +268,8 @@ def validate_args(args, defaults={}):
     #     args.seq_length = args.encoder_seq_length
     args.seq_length = args.max_sent_length
     args.encoder_seq_length = args.max_sent_length
-    args.max_position_embeddings = args.max_sent_length
+    # accounts for BOS and EOS tokens
+    args.max_position_embeddings = args.max_sent_length + 2
 
     if args.seq_length is not None:
         assert args.max_position_embeddings >= args.seq_length
@@ -581,6 +591,8 @@ def _add_network_size_args(parser):
     group = parser.add_argument_group(title="network size")
 
     group.add_argument("--num-layers", type=int, default=None, help="Number of transformer layers.")
+    group.add_argument("--encoder-1-num-layers", type=int, default=None, help="Number of encoder transformer layers.")
+    group.add_argument("--encoder-2-num-layers", type=int, default=None, help="Number of encoder transformer layers.")
     group.add_argument("--encoder-num-layers", type=int, default=None, help="Number of encoder transformer layers.")
     group.add_argument("--decoder-num-layers", type=int, default=None, help="Number of decoder transformer layers.")
     group.add_argument("--hidden-size", type=int, default=None, help="Tansformer hidden size.")
@@ -1388,9 +1400,11 @@ def _add_data_args(parser):
     )
     group.add_argument("--data-cache-path", default=None, help="Path to a directory to hold cached index files.")
 
+    group.add_argument("--language", type=str, default=None, help="Code dataset language.")
+    group.add_argument("--tree-sitter-path", type=str, default=None, help="Path to the tree sitter vocab.")
+
     group.add_argument("--vocab-size", type=int, default=None, help="Size of vocab before EOD or padding.")
     group.add_argument("--vocab-file", type=str, default=None, help="Path to the vocab file.")
-    group.add_argument("--max-doc-length", type=int, default=None, help="Max len of doc (method).")
     group.add_argument("--max-sent-num", type=int, default=None, help="Max number of trees in doc (method).")
     group.add_argument("--max-sent-length", type=int, default=None, help="Max len of subsequence tree.")
     group.add_argument("--max-label-length", type=int, default=None, help="Max len of label (method name).")

@@ -16,6 +16,8 @@ from .transformer import ParallelTransformer
 from .utils import get_linear_layer
 from .utils import init_method_normal, scaled_init_method_normal
 
+import pydevd_pycharm
+
 
 def parallel_lm_logits(input_, word_embeddings_weight, parallel_output, bias=None):
     """LM logits using word embedding weights."""
@@ -51,7 +53,8 @@ def parallel_lm_logits(input_, word_embeddings_weight, parallel_output, bias=Non
 def get_language_model(
     config,
     add_pooler,
-    # encoder_attn_mask_type,
+    add_encoder=True,
+    add_decoder=True,
     decoder_attn_mask_type=AttnMaskType.causal,
     pre_process=True,
     post_process=True,
@@ -65,11 +68,11 @@ def get_language_model(
         config.output_layer_init_method = scaled_init_method_normal(config.init_method_std, config.num_layers)
 
     # Language model.
-    # TODO decoder_attn_mask_type! What it should be?
     language_model = СodeformerLanguageModel(
         config,
-        # encoder_attn_mask_type,
         decoder_attn_mask_type=decoder_attn_mask_type,
+        add_encoder=add_encoder,
+        add_decoder=add_decoder,
         add_pooler=add_pooler,
         pre_process=pre_process,
         post_process=post_process,
@@ -328,6 +331,8 @@ class СodeformerLanguageModel(MegatronModule):
         self,
         config,
         # encoder_attn_mask_type,
+        add_encoder=True,
+        add_decoder=False,
         decoder_attn_mask_type=AttnMaskType.causal,
         add_pooler=False,
         pre_process=True,
@@ -351,36 +356,40 @@ class СodeformerLanguageModel(MegatronModule):
         self.encoder_hidden_state = None
         self.add_retriever = args.retro_add_retriever
         self.untie_embeddings_and_output_weights = args.untie_embeddings_and_output_weights
+        self.add_encoder = add_encoder
+        self.add_decoder = add_decoder
+        self.max_sent_length = args.max_sent_length
 
         # Embeddings.
         if self.pre_process:
             self.embedding = Embedding(
-                self.hidden_size,
-                args.padded_vocab_size,
-                args.max_position_embeddings,
-                args.hidden_dropout,
-                config,
-                self.num_tokentypes,
-                args.embedding_weights_in_fp32,
+                hidden_size=self.hidden_size,
+                vocab_size=args.padded_vocab_size,
+                max_sequence_length=args.max_position_embeddings,
+                embedding_dropout_prob=args.hidden_dropout,
+                config=config,
+                num_tokentypes=self.num_tokentypes,
+                embedding_weights_in_fp32=args.embedding_weights_in_fp32,
             )
+
             self._embedding_key = "embedding"
 
-            ## TODO decide shouldn't we use shared emb
+            ## TODO DISCUSS decide shouldn't we use shared emb
             self.embedding_dec = Embedding(
-                self.hidden_size,
-                args.padded_vocab_size,
-                args.max_position_embeddings,
-                args.hidden_dropout,
-                config,
-                self.num_tokentypes,
-                args.embedding_weights_in_fp32,
+                hidden_size=self.hidden_size,
+                vocab_size=args.padded_vocab_size,
+                max_sequence_length=args.max_position_embeddings,
+                embedding_dropout_prob=args.hidden_dropout,
+                config=config,
+                num_tokentypes=self.num_tokentypes,
+                embedding_weights_in_fp32=args.embedding_weights_in_fp32,
             )
             self._embedding_key = "embedding_dec"
 
         # Rotary positional embeddings
         self.use_rotary_position_embeddings = args.position_embedding_type == "rope"
         if self.use_rotary_position_embeddings:
-            self.seq_length = args.seq_length
+            self.seq_length = args.max_sent_length
             rotary_dim = args.hidden_size // args.num_attention_heads if args.kv_channels is None else args.kv_channels
 
             if args.rotary_percent < 1.0:
@@ -392,26 +401,28 @@ class СodeformerLanguageModel(MegatronModule):
             self.rotary_pos_emb = RotaryEmbedding(
                 rotary_dim, seq_len_interpolation_factor=args.rotary_seq_len_interpolation_factor
             )
-
+        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
         # Encoder (usually set to True, False if part of an encoder-decoder
         # architecture and in encoder-only stage).
-        # TODO self.encoder_attn_mask_type !!
         self.encoder_1 = ParallelTransformer(
             config,
             model_type=ModelType.encoder_and_decoder,
-            # self_attn_mask_type=self.encoder_attn_mask_type,
+            is_codeformer=True,
+            enc_num=1,
             pre_process=self.pre_process,
             post_process=self.post_process,  # If postprocess, then LayerNorm is applied to the output
         )
         self._encoder_1_key = "encoder_1"
 
-        self.linear = get_linear_layer(args.max_sent_length, 1, config.init_method)
+        # args.max_position_embeddings = args.max_sent_length+2 due toa dditinal BOS and EOS tokens
+        self.linear = get_linear_layer(args.max_position_embeddings, 1, config.init_method)
         self._linear_key = "linear"
 
         self.encoder_2 = ParallelTransformer(
             config,
             model_type=ModelType.encoder_and_decoder,
-            # self_attn_mask_type=self.encoder_attn_mask_type,
+            is_codeformer=True,
+            enc_num=2,
             pre_process=self.pre_process,
             post_process=self.post_process,
         )
@@ -420,6 +431,7 @@ class СodeformerLanguageModel(MegatronModule):
         self.decoder = ParallelTransformer(
             config,
             model_type=ModelType.encoder_and_decoder,
+            is_codeformer=True,
             layer_type=LayerType.decoder,
             self_attn_mask_type=self.decoder_attn_mask_type,
             pre_process=self.pre_process,
@@ -439,8 +451,6 @@ class СodeformerLanguageModel(MegatronModule):
                 )  # Setting bias to False always to keep it consistent with embedding tying that also does not have a bias.
                 self._output_layer_key = "output_layer"
 
-            ## TODO what positions embed should we use?
-
     def get_position_ids(self, token_ids):
         # Create position ids
         seq_length = token_ids.size(1)
@@ -451,34 +461,40 @@ class СodeformerLanguageModel(MegatronModule):
 
     def set_input_tensor(self, input_tensor):
 
-        ## TODO! Important fot parralel. Now it is implemented incorrectly
-
         """See megatron.model.transformer.set_input_tensor()"""
 
         # This is usually handled in schedules.py but some inference code still
         # gives us non-lists or None
+        # TODO input_tensor is always None. When does it change?
         if not isinstance(input_tensor, list):
             input_tensor = [input_tensor]
+            # if input_tensor is not None:
+            #     import pydevd_pycharm
+            #     pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
 
-        # if self.add_encoder and self.add_decoder:
-        #     assert (
-        #         len(input_tensor) == 1
-        #     ), "input_tensor should only be length 1 for stage with both encoder and decoder"
-        #     self.encoder.set_input_tensor(input_tensor[0])
-        # elif self.add_encoder:
-        assert len(input_tensor) == 1, "input_tensor should only be length 1 for stage with only encoder"
         self.encoder_1.set_input_tensor(input_tensor[0])
-        # elif self.add_decoder:
-        #     if len(input_tensor) == 2:
-        #         self.decoder.set_input_tensor(input_tensor[0])
-        #         self.encoder_hidden_state = input_tensor[1]
-        #     elif len(input_tensor) == 1:
-        #         self.decoder.set_input_tensor(None)
-        #         self.encoder_hidden_state = input_tensor[0]
-        #     else:
-        #         raise Exception("input_tensor must have either length 1 or 2")
-        # else:
-        #     raise Exception("Stage must have at least either encoder or decoder")
+
+        if self.add_encoder and self.add_decoder:
+            assert (
+                len(input_tensor) == 1
+            ), "input_tensor should only be length 1 for stage with both encoder and decoder"
+            self.encoder_1.set_input_tensor(input_tensor[0])
+        elif self.add_encoder:
+            assert len(input_tensor) == 1, "input_tensor should only be length 1 for stage with only encoder"
+            self.encoder_1.set_input_tensor(input_tensor[0])
+        elif self.add_decoder:
+            if len(input_tensor) == 2:
+                self.decoder.set_input_tensor(input_tensor[0])
+                self.encoder_hidden_state = input_tensor[1]
+            elif len(input_tensor) == 1:
+                self.decoder.set_input_tensor(None)
+                self.encoder_hidden_state = input_tensor[0]
+            else:
+                raise Exception("input_tensor must have either length 1 or 2")
+        else:
+            raise Exception("Stage must have at least either encoder or decoder")
+
+        assert len(input_tensor) == 1, "input_tensor should only be length 1 for stage with only encoder"
 
     def forward(
         self,
@@ -496,18 +512,16 @@ class СodeformerLanguageModel(MegatronModule):
         output_enc_hidden=False,
     ):
 
-        # import pydevd_pycharm
-
-        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
+        pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
         # Encoder embedding.
         b = enc_input_ids.size(0)
-        # TODO replace 18 by sent length
-        enc_input_ids = rearrange(enc_input_ids, "b (s t) -> (b s) t", t=18)
+        enc_input_ids = rearrange(enc_input_ids, "b (s t) -> (b s) t", t=self.max_sent_length + 2)
         enc_mask = rearrange(enc_mask, "b 1 s ... -> (b s) 1 ...")
 
-        # TODO Can be done more effectively, not to call function each forward call
+        # TODO May be can be done more effectively, not to call function each forward call.
         enc_position_ids = self.get_position_ids(enc_input_ids)
         dec_position_ids = self.get_position_ids(dec_input_ids)
+        # TODO DISCUSS Maybe we can share embedding matrix between decoder and encoder
         if self.pre_process:
             encoder_input = self.embedding(enc_input_ids, enc_position_ids, tokentype_ids=tokentype_ids)
             decoder_input = self.embedding_dec(dec_input_ids, dec_position_ids, tokentype_ids=tokentype_ids)
