@@ -2,6 +2,8 @@
 
 source /workspace/megatron/configs/config_local_path.sh
 source /workspace/megatron/configs/config_model.sh
+source /workspace/megatron/configs/config_data.sh
+
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 # export PATH=/workspace/megatron
 DATA_PROCESSED_PATH="${DATA_PATH}train_code_sentence" # .._text_sentence
@@ -22,26 +24,20 @@ DISTRIBUTED_ARGS="
     --master_port $MASTER_PORT
 "
 
-DATA_ARGS="
+DATA_PATHS="
     --data-path $DATA_PROCESSED_PATH \
-    --split 949,50,1
+    --tree-sitter-path $TREE_SITTER_PATH \
+    --vocab-file $VOCAB_FILE \
 "
-#    --vocab-file $VOCAB_FILE \
-OUTPUT_ARGS="
-    --log-interval 100 \
-    --save-interval 10000 \
-    --eval-interval 100 \
-    --eval-iters 10 \
-    --wandb-entity-name machine-learning-methods-in-software-engineering \
-    --wandb-project-name dev \
-"
-# timur-galimzyanov
 
 export WANDB_DISABLE_GIT=true
 export WANDB_BASE_URL="https://jetbrains.wandb.io"
 
 export CUDA_VISIBLE_DEVICES=2,4,5,6
+
 torchrun $DISTRIBUTED_ARGS pretrain_codeformer.py \
+    --codeformer\
+    $DATA_PATHS \
     $MODEL_ARGS \
     $DATA_ARGS \
     $DATA_PROC_ARGS \
@@ -49,4 +45,3 @@ torchrun $DISTRIBUTED_ARGS pretrain_codeformer.py \
     --distributed-backend nccl \
     --save $CHECKPOINT_PATH \
 #    --load $CHECKPOINT_PATH
-

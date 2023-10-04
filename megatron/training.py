@@ -6,7 +6,7 @@ from datetime import datetime
 import math
 import sys
 import time
-import wandb
+
 # The earliest we can measure the start time.
 _TRAIN_START_TIME = time.time()
 import torch
@@ -17,7 +17,6 @@ from megatron import get_timers
 from megatron import get_tensorboard_writer
 from megatron import get_current_global_batch_size
 from megatron import get_num_microbatches
-from megatron import is_last_rank
 from megatron import update_num_microbatches
 from megatron.core import mpu, tensor_parallel
 from megatron.core.utils import get_model_config
@@ -43,6 +42,7 @@ from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.utils import report_memory
 from megatron.model.vision.knn_monitor import compute_feature_bank
 from megatron.data.dataset_utils import get_train_valid_test_split_
+from megatron import is_last_rank
 
 import pydevd_pycharm
 
@@ -696,11 +696,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
     
     # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
     # Init Weights and Biases
-    if torch.distributed.is_initialized():
-        if torch.distributed.get_rank() == 0 and args.local_rank == 0:
-            init_wandb()
-    else:
-        init_wandb()
+    init_wandb()
 
     # Turn on training mode which enables dropout.
     for model_module in model:

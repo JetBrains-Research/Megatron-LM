@@ -20,6 +20,9 @@ _GLOBAL_ADLR_AUTORESUME = None
 _GLOBAL_TIMERS = None
 _GLOBAL_SIGNAL_HANDLER = None
 
+def is_last_rank():
+    return torch.distributed.get_rank() == (
+        torch.distributed.get_world_size() - 1)
 
 def get_args():
     """Return arguments."""
@@ -166,13 +169,8 @@ class SummaryWriter:
         metrics = {
             metric_name: metric_val,
         }
-        wandb.log(metrics, step=iteration, commit=True)
-        # TODO wandb still does not work with multi-gpu
-        # if torch.distributed.is_initialized():
-        #     if torch.distributed.get_rank() == 0 and self.args.local_rank == 0:
-        #         wandb.log(metrics, step=iteration, commit=True)
-        # else:
-        #     wandb.log(metrics, step=iteration, commit=True)
+        if is_last_rank():
+            wandb.log(metrics, step=iteration, commit=True)
 
     def add_text(self, *args, **kwargs):
         pass
