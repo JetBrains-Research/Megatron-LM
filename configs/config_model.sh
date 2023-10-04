@@ -1,4 +1,3 @@
-## TODO remake train-samples into train-iters
 MODEL_ARGS="
     --encoder-num-layers 6 \
     --encoder-1-num-layers 6 \
@@ -11,15 +10,14 @@ MODEL_ARGS="
     --micro-batch-size 4 \
     --global-batch-size 32 \
     --lr 0.0001 \
-    --train-samples 600 \
     --min-lr 0.00001 \
     --weight-decay 1e-2 \
     --lr-warmup-fraction .01 \
     --clip-grad 1.0 \
     --fp16 \
-    --vocab-extra-ids 100
+    --vocab-extra-ids 100 \
 "
-
+#     --epochs 2 \
 # TODO May be rename sent -> subtree
 # Note, that finally label would be (max-label-length+2) due to BOS and EOS tokens.
 DATA_PROC_ARGS="

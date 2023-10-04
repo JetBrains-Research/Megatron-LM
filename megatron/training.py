@@ -42,7 +42,9 @@ from megatron.utils import calc_params_l2_norm
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.utils import report_memory
 from megatron.model.vision.knn_monitor import compute_feature_bank
+from megatron.data.dataset_utils import get_train_valid_test_split_
 
+import pydevd_pycharm
 
 def print_datetime(string):
     """Note that this call will sync across all ranks."""
@@ -136,6 +138,7 @@ def pretrain(train_valid_test_dataset_provider,
         train_data_iterator, valid_data_iterator, test_data_iterator \
             = build_train_valid_test_data_iterators(
                 train_valid_test_dataset_provider)
+    # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
     timers('train/valid/test-data-iterators-setup').stop()
     print_datetime('after dataloaders are built')
 
@@ -720,7 +723,9 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
     timers('interval-time', log_level=0).start(barrier=True)
     print_datetime('before the start of training step')
     report_memory_flag = True
-    while iteration < args.train_iters:
+    # import pydevd_pycharm
+    # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
+    while iteration < args.train_iters: #args.train_iters = args.train_samples // args.global_batch_size
         if args.profile and \
            iteration == args.profile_step_start and \
            torch.distributed.get_rank() in args.profile_ranks:
@@ -954,18 +959,26 @@ def build_train_valid_test_datasets(build_train_valid_test_datasets_provider):
     """Build pretraining datasets."""
 
     args = get_args()
+    # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
 
     # Number of train/valid/test samples.
+
     if args.train_samples:
         train_samples = args.train_samples
     else:
         train_samples = args.train_iters * args.global_batch_size
-    eval_iters = (args.train_iters // args.eval_interval + 1) * \
-                 args.eval_iters
-    test_iters = args.eval_iters
-    train_val_test_num_samples = [train_samples,
-                                  eval_iters * args.global_batch_size,
-                                  test_iters * args.global_batch_size]
+    if not args.codeformer:
+        eval_iters = (args.train_iters // args.eval_interval + 1) * args.eval_iters
+        test_iters = args.eval_iters
+        train_val_test_num_samples = [train_samples,
+                                      eval_iters * args.global_batch_size,
+                                      test_iters * args.global_batch_size]
+    elif args.codeformer:
+        total_val_samples = (train_samples // args.eval_interval_samples + 1) * args.eval_iters_samples
+        train_val_test_num_samples = [train_samples,
+                                      total_val_samples,
+                                      args.test_samples]
+
     print_rank_0(' > datasets target sizes (minimum size):')
     print_rank_0('    train:      {}'.format(train_val_test_num_samples[0]))
     print_rank_0('    validation: {}'.format(train_val_test_num_samples[1]))
@@ -1006,10 +1019,10 @@ def build_train_valid_test_data_loaders(
         train_dataloader = build_pretraining_data_loader(
             train_ds, args.consumed_train_samples)
         if args.skip_train:
-            valid_dataloader = build_pretraining_data_loader(valid_ds, 0)
+            valid_dataloader = build_pretraining_data_loader(valid_ds, 0, cyclic=True)
         else:
             valid_dataloader = build_pretraining_data_loader(
-                valid_ds, args.consumed_valid_samples)
+                valid_ds, args.consumed_valid_samples, cyclic=True)
         test_dataloader = build_pretraining_data_loader(test_ds, 0)
 
         # Flags to know if we need to do training/validation/testing.

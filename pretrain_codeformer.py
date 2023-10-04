@@ -82,7 +82,6 @@ def model_provider(pre_process=True, post_process=True, add_encoder=True, add_de
 
 def get_batch(data_iterator):
     """Build the batch."""
-    # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
     keys = ["docs_enc", "sent_nums", "labels", "loss_mask", "enc_mask", "dec_mask", "enc_dec_mask", "sent_mask"]
     datatype = torch.int64
 
@@ -146,9 +145,13 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
     """Build train, valid, and test datasets."""
     args = get_args()
 
-    print_rank_0("> building train, validation, and test datasets " "for T5 ...")
+    print_rank_0("> building train, validation, and test datasets " "for CodeFormer ...")
+    data_prefix=args.data_path
+    label_prefix = [prefix.replace("code", "label") for prefix in data_prefix]
+    # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
+
     train_ds, valid_ds, test_ds = build_train_valid_test_datasets(
-        data_prefix=args.data_path,
+        data_prefix=data_prefix,
         splits_string=args.split,
         train_valid_test_num_samples=train_val_test_num_samples,
         max_seq_length=args.max_sent_length,
@@ -156,6 +159,7 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
         seed=args.seed,
         skip_warmup=(not args.mmap_warmup),
         dataset_type="codeformer",
+        label_prefix=label_prefix
     )
     print_rank_0("> finished creating CodeFormer datasets ...")
 

@@ -30,6 +30,7 @@ from megatron.data import indexed_dataset
 
 
 PORT_DEBUG = 2000
+# pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
 try:
     # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
     pass
@@ -64,7 +65,7 @@ class Encoder(object):
         # Use Encoder class as a container for global data
         Encoder.tokenizer = build_tokenizer(self.args)
         # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
-        # TODO what is max_code_parts?
+        # TODO DISCUSS what is max_code_parts?
         config = {
             "programming_language": self.args.language,
             "path_to_tree_sitter": f"{self.args.tree_sitter_path}/tree-sitter-{self.args.language}",
@@ -76,14 +77,12 @@ class Encoder(object):
         Encoder.splitter_ast = AstCodeSplitter(config, Encoder.tokenizer)
 
     def split_and_tokenize(self, json_line):
-        # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
         data = json.loads(json_line)
         try:
             tree_split_res = Encoder.splitter_ast.split(data["code"])[0]
         except:
-            # TODO once I had an error, Encoder.splitter_ast.split(data['code']) returning None. But it did not replicated. Need to observe
-            print("something wrong")
-            tree_split_res = None
+            # TODO Some time before 04.10.2023 there were no errors, I changed nothing, but not it is 11 errors per 1000.
+            return ([], [])
         label_tokenized = Encoder.tokenizer.tokenize(
             data["label"].replace("|", " "),
             padding="max_length",
@@ -93,14 +92,20 @@ class Encoder(object):
         return tree_split_res, label_tokenized
 
     def encode(self, json_line):
-        # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
         ids = {}
         lens = {}
+        # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
         ids["code"], ids["label"] = self.split_and_tokenize(json_line)
-        lens["label"] = [len(ids["label"])]
-        lens["code"] = [len(sentence) for sentence in ids["code"]]
+        if len(ids["label"]) > 0:
+            lens["label"] = [len(ids["label"])]
+            lens["code"] = [len(sentence) for sentence in ids["code"]]
+            len_line = len(json_line)
+        else:
+            lens["label"] = [0]
+            lens["code"] = [0]
+            len_line = 0
 
-        return ids, lens, len(json_line)
+        return ids, lens, len_line
 
 
 class Partition(object):
@@ -124,7 +129,6 @@ class Partition(object):
         encoder = Encoder(self.args)
         pool = multiprocessing.Pool(self.workers, initializer=encoder.initializer)
         split_docs = pool.imap(encoder.split, fin, 32)
-
         proc_start = time.time()
         total_bytes_processed = 0
         for i, (doc, bytes_processed) in enumerate(split_docs, start=1):
@@ -134,6 +138,13 @@ class Partition(object):
 
         fin.close()
         fout.close()
+
+    def save_data_size(self, input_filepath, output_filename, total_docs_processed):
+        input_folder = os.path.dirname(input_filepath)
+        output_json_path = os.path.join(input_folder, output_filename)
+        line_count_dict = {"total_docs": total_docs_processed}
+        with open(output_json_path, "w") as json_file:
+            json.dump(line_count_dict, json_file)
 
     def process_json_file(self, file_name, output_prefix):
         # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
@@ -166,14 +177,24 @@ class Partition(object):
         startup_end = time.time()
         proc_start = time.time()
         total_bytes_processed = 0
+        total_docs_processed = 0
+        total_errors = 0
         print("Time to startup:", startup_end - startup_start)
+        # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
         for i, (doc, sentence_lens, bytes_processed) in enumerate(encoded_docs, start=1):
+            if bytes_processed == 0:
+                total_errors += 1
+                continue
+            total_docs_processed += 1
             total_bytes_processed += bytes_processed
             for key in doc.keys():
                 builders[key].add_doc(doc[key], sentence_lens[key])
             self.print_processing_stats(i, proc_start, total_bytes_processed)
 
         fin.close()
+        print(f'Number of tree errors = {total_errors}')
+        print(f'Final number of docs = {total_docs_processed}')
+        self.save_data_size(input_file_name, "dataset_size.json", total_docs_processed)
         for key in self.args.json_keys:
             builders[key].finalize(output_idx_files[key])
 
@@ -347,24 +368,6 @@ def main():
     assert args.workers % args.partitions == 0
     partition = Partition(args, args.workers // args.partitions)
 
-    # check to see if paritions with split sentences already created
-    # split_sentences_present = check_files_exist(in_ss_out_names, "sentence_split", args.partitions)
-
-    # split sentences in partition files
-    # if args.split_sentences and not split_sentences_present:
-    #     processes = []
-    #     for name in in_ss_out_names:
-    #         p = multiprocessing.Process(
-    #             target=partition.split_sentences, args=((name["partition"], name["sentence_split"]),)
-    #         )
-    #         p.start()
-    #         processes.append(p)
-    #
-    #     for p in processes:
-    #         p.join()
-    #
-    #     if args.partitions == 1:
-    #         return
     # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
     # encode partition files in parallel
     processes = []

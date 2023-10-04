@@ -24,10 +24,9 @@ DISTRIBUTED_ARGS="
 
 DATA_ARGS="
     --data-path $DATA_PROCESSED_PATH \
-    --vocab-file $VOCAB_FILE \
     --split 949,50,1
 "
-
+#    --vocab-file $VOCAB_FILE \
 OUTPUT_ARGS="
     --log-interval 100 \
     --save-interval 10000 \
@@ -45,11 +44,9 @@ export CUDA_VISIBLE_DEVICES=2,4,5,6
 torchrun $DISTRIBUTED_ARGS pretrain_codeformer.py \
     $MODEL_ARGS \
     $DATA_ARGS \
-    --tensor-model-parallel-size 2 \
     $DATA_PROC_ARGS \
     $OUTPUT_ARGS \
     --distributed-backend nccl \
     --save $CHECKPOINT_PATH \
 #    --load $CHECKPOINT_PATH
-# TODO decide, whether we need model parallelism
 

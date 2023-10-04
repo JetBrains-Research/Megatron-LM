@@ -146,7 +146,6 @@ class CodeformerModel(MegatronModule):
             decoder_output = lm_output
             return decoder_output
 
-    ## TODO rewrite according current archetecture
     def state_dict_for_save_checkpoint(self, prefix="", keep_vars=False):
         """For easy load when model is combined with other heads,
         add an extra key."""

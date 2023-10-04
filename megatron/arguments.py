@@ -14,6 +14,7 @@ from megatron.global_vars import set_retro_args, get_retro_args
 from tools.retro.utils import get_args_path as get_retro_args_path
 
 from megatron.core.transformer import TransformerConfig
+import pydevd_pycharm
 
 
 def parse_args(extra_args_provider=None, ignore_unknown_args=False):
@@ -61,6 +62,34 @@ def parse_args(extra_args_provider=None, ignore_unknown_args=False):
 
     return args
 
+def get_train_valid_test_sizes(splits_string, size):
+    """Get num of sample in splits"""
+
+    splits = []
+    if splits_string.find(",") != -1:
+        splits = [float(s) for s in splits_string.split(",")]
+    elif splits_string.find("/") != -1:
+        splits = [float(s) for s in splits_string.split("/")]
+    else:
+        splits = [float(splits_string)]
+    while len(splits) < 3:
+        splits.append(0.0)
+    splits = splits[:3]
+    splits_sum = sum(splits)
+    assert splits_sum > 0.0
+    splits = [split / splits_sum for split in splits]
+    splits_sample_size = []
+    for index, split in enumerate(splits):
+        splits_sample_size.append(int(round(split * float(size))))
+    assert sum(splits_sample_size) <= size
+    return splits_sample_size
+
+def get_total_samples(data_path, meta_filename):
+    input_folder = os.path.dirname(data_path)
+    meta_data_path = os.path.join(input_folder, meta_filename)
+    with open(meta_data_path, "r") as f:
+        data = json.load(f)
+    return data['total_docs']
 
 def validate_args(args, defaults={}):
     # Tensor model parallel size.
@@ -153,6 +182,20 @@ def validate_args(args, defaults={}):
         if args.rank == 0:
             print("setting global batch size to {}".format(args.global_batch_size), flush=True)
     assert args.global_batch_size > 0
+
+    if args.eval_iters_samples:
+        args.eval_iters = args.eval_iters_samples//args.global_batch_size
+    else:
+        args.eval_iters_samples = args.eval_iters*args.global_batch_size
+    if args.eval_interval:
+        args.eval_interval = args.eval_interval_samples // args.global_batch_size
+    else:
+        args.eval_interval_samples = args.eval_interval**args.global_batch_size
+    assert args.eval_iters > 0
+    assert args.eval_interval > 0
+    print(f'Eval iterations in batches {args.eval_iters}')
+    print(f'Eval interval in batches {args.eval_interval}')
+
     if args.num_layers_per_virtual_pipeline_stage is not None:
         assert args.pipeline_model_parallel_size > 2, (
             "pipeline-model-parallel size should be greater than 2 with " "interleaved schedule"
@@ -223,6 +266,9 @@ def validate_args(args, defaults={}):
         if args.lr_warmup_fraction is not None:
             assert args.lr_warmup_samples == 0, "can only specify one of lr-warmup-fraction " "and lr-warmup-samples"
 
+    total_samples = get_total_samples(args.data_path[0], 'dataset_size.json')
+    args.test_samples = get_train_valid_test_sizes(args.split, total_samples)[-1]
+
     if args.num_layers is not None:
         assert args.encoder_1_num_layers is None, "cannot have both num-layers and encoder-num-layers specified"
         assert args.encoder_2_num_layers is None, "cannot have both num-layers and encoder-num-layers specified"
@@ -269,7 +315,8 @@ def validate_args(args, defaults={}):
     args.seq_length = args.max_sent_length
     args.encoder_seq_length = args.max_sent_length
     # accounts for BOS and EOS tokens
-    args.max_position_embeddings = args.max_sent_length + 2
+    if args.codeformer:
+        args.max_position_embeddings = args.max_sent_length + 2
 
     if args.seq_length is not None:
         assert args.max_position_embeddings >= args.seq_length
@@ -832,6 +879,7 @@ def _add_regularization_args(parser):
 def _add_training_args(parser):
     group = parser.add_argument_group(title="training")
 
+    group.add_argument("--codeformer", action="store_true")
     group.add_argument(
         "--micro-batch-size",
         type=int,
@@ -959,6 +1007,9 @@ def _add_training_args(parser):
         "training runs. Note that either train-iters or "
         "train-samples should be provided.",
     )
+    group.add_argument("--val-samples-per-run", type=int,default=100, help="Val samples per val run")
+    # group.add_argument("--test-samples", type=int, default=100, help="Val samples per val run")
+
     group.add_argument("--log-interval", type=int, default=100, help="Report loss and timing interval.")
     group.add_argument(
         "--exit-interval",
@@ -1335,8 +1386,15 @@ def _add_validation_args(parser):
         "--eval-iters", type=int, default=100, help="Number of iterations to run for evaluation" "validation/test for."
     )
     group.add_argument(
-        "--eval-interval", type=int, default=1000, help="Interval between running evaluation on " "validation set."
+        "--eval-interval", type=int, default=1000, help="Interval between running evaluation on " "validation set"
     )
+    group.add_argument(
+        "--eval-iters-samples", type=int, default=100, help="Number of iterations to run for evaluation" "validation/test for. Counted in samples"
+    )
+    group.add_argument(
+        "--eval-interval-samples", type=int, default=1000, help="Interval between running evaluation on " "validation set. Counted in samples"
+    )
+
     group.add_argument(
         "--skip-train",
         action="store_true",

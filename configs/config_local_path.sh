@@ -6,9 +6,7 @@ CHECKPOINT_PATH="/workspace/checkpoints"
 LOGGING_PATH="/workspace/logging"
 TREE_SITTER_PATH="/workspace/megatron/codeformer_utils/vendor"
 
-# DATA_FILE="data_dev.jsonl"
 DATA_FILE="train.jsonl"
 DATA_FILE_PATH="${DATA_PATH}${DATA_FILE}"
-
-#VOCAB_FILE="${MODEL_PATH}/bert-large-uncased-vocab.txt"
-#MERGE_FILE="gpt2-merges.txt"
+VOCAB_FILE="${MODEL_PATH}/bert-large-uncased-vocab.txt"
+MERGE_FILE="gpt2-merges.txt"

@@ -166,7 +166,7 @@ class SummaryWriter:
         metrics = {
             metric_name: metric_val,
         }
-        # wandb.log(metrics, step=iteration, commit=True)
+        wandb.log(metrics, step=iteration, commit=True)
         # TODO wandb still does not work with multi-gpu
         # if torch.distributed.is_initialized():
         #     if torch.distributed.get_rank() == 0 and self.args.local_rank == 0:

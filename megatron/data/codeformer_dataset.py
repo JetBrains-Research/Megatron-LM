@@ -4,10 +4,10 @@
 
 import numpy as np
 import torch
+import os
 
 from megatron import get_tokenizer
-from megatron.data.dataset_utils import create_masked_lm_predictions, get_samples_mapping
-from codeformer_utils.vendor.codeformer import AstCodeSplitter
+from megatron.data.dataset_utils import get_train_valid_test_split_
 
 import pydevd_pycharm
 
@@ -28,7 +28,6 @@ class CodeformerDataset(torch.utils.data.Dataset):
         max_seq_length_dec,
         max_sent_num,
         max_label_length,
-        short_seq_prob,
         seed,
     ):
 
@@ -47,20 +46,10 @@ class CodeformerDataset(torch.utils.data.Dataset):
         # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
 
         # Build the samples mapping.
-        ## TODO Here we need to realize train-val-test split!
-        # TODO may be use helpers.build_mapping for building sample mapping
+        # TODO may be use helpers.build_mapping (see language_model.py) for building sample mapping
 
-        self.samples_mapping = get_samples_mapping(
-            self.indexed_dataset,
-            data_prefix,
-            num_epochs,
-            max_num_samples,
-            self.max_seq_length - 2,  # account for added tokens
-            short_seq_prob,
-            self.seed,
-            self.name,
-            False,
-        )
+        self.samples_mapping = create_sample_mapping_cf(indexed_labels, seed, max_num_samples, name, data_prefix)
+        # self.n = 1
 
         # Vocab stuff.
         tokenizer = get_tokenizer()
@@ -76,19 +65,23 @@ class CodeformerDataset(torch.utils.data.Dataset):
         assert len(self.sentinel_tokens) > 0, "Provide the argument --vocab-extra-ids 100 to the script"
 
     def __len__(self):
-        return len(self.indexed_dataset.doc_idx) - 1
+        return self.samples_mapping.shape[0]
 
     def __getitem__(self, idx):
         # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
-        doc_idx_start = self.indexed_dataset.doc_idx[idx]
-        doc_idx_end = self.indexed_dataset.doc_idx[idx + 1]
+        # if self.name == 'train':
+        #     print(self.n, idx)
+        #     self.n += 1
+        doc_index = self.samples_mapping[idx]
+        sent_idx_start = self.indexed_dataset.doc_idx[doc_index]
+        sent_idx_end = self.indexed_dataset.doc_idx[doc_index + 1]
+        label = self.indexed_labels[doc_index]
         sample = []
-        for index in range(doc_idx_start, doc_idx_end):
+        for index in range(sent_idx_start, sent_idx_end):
             # I do not do any truncation or padding here
             # everything is already done in data preprocessing
             sentence = self.indexed_dataset[index]
             sample.append(sentence)
-        label = self.indexed_labels[idx]
 
         return build_training_sample(
             sample,
@@ -185,3 +178,27 @@ def make_history_mask(block):
     )
     history_mask = history_mask.astype(np.int64)
     return history_mask
+
+def create_sample_mapping_cf(indexed_labels, seed, max_num_samples, name, data_prefix):
+    epochs = max_num_samples//(indexed_labels.doc_idx.shape[0]-1)
+    resid_n = max_num_samples - epochs*(indexed_labels.doc_idx.shape[0]-1)
+    if epochs == 0:
+        epochs = 1
+        resid_n = 0
+    np.random.seed(seed)
+    samples_mapping = []
+    for _ in range(epochs):
+        shuffled_copy = np.random.permutation(indexed_labels.doc_idx[:-1])
+        samples_mapping.append(shuffled_copy)
+    resid = np.random.choice(indexed_labels.doc_idx[:-1], resid_n, replace=False)
+    samples_mapping = samples_mapping + [resid]
+    samples_mapping = np.concatenate(samples_mapping)
+
+    split_set_sent_indices_file = f"{name}_set_indices.npy"
+    split_sent_indices_file = f"{name}_indices.npy"
+    split_set_sent_indices_file = os.path.join(os.path.dirname(data_prefix), split_set_sent_indices_file)
+    split_sent_indices_file = os.path.join(os.path.dirname(data_prefix), split_sent_indices_file)
+    np.save(split_set_sent_indices_file, indexed_labels.doc_idx[:-1])
+    np.save(split_sent_indices_file, samples_mapping)
+
+    return samples_mapping

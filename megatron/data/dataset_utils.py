@@ -25,6 +25,7 @@ import collections
 
 import numpy as np
 import torch
+import pydevd_pycharm
 
 from megatron import get_args, print_rank_0
 from megatron.core import mpu
@@ -431,10 +432,7 @@ def build_train_valid_test_datasets_with_prefixes(
     dataset_type="standard_bert",
 ):
     print_rank_0("Separate data paths provided for train, valid & test.")
-
-    import pydevd_pycharm
-
-    pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
+    # TODO. This is not used now, and I have not added labels
 
     train_dataset, valid_dataset, test_dataset = None, None, None
     # Single dataset.
@@ -490,7 +488,11 @@ def build_train_valid_test_datasets(
     binary_head=False,
     max_seq_length_dec=None,
     dataset_type="standard_bert",
+    label_prefix=None
 ):
+
+    if label_prefix is not None:
+        label_prefix = label_prefix[0]
 
     if len(data_prefix) == 1:
         return _build_train_valid_test_datasets(
@@ -503,9 +505,11 @@ def build_train_valid_test_datasets(
             binary_head,
             max_seq_length_dec,
             dataset_type=dataset_type,
+            label_prefix = label_prefix,
         )
     # Blending dataset.
     # Parse the values.
+    # TODO for now I do only processing single train-valid-test file
     output = get_datasets_weights_and_num_samples(data_prefix, train_valid_test_num_samples)
     prefixes, weights, datasets_train_valid_test_num_samples = output
     train_num_samples, valid_num_samples, test_num_samples = map(sum, zip(*datasets_train_valid_test_num_samples))
@@ -557,12 +561,18 @@ def _build_train_valid_test_datasets(
     binary_head,
     max_seq_length_dec,
     dataset_type="standard_bert",
+    label_prefix = None,
 ):
 
+    # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
     # Indexed dataset.
     indexed_dataset = get_indexed_dataset_(data_prefix, dataset_type, skip_warmup)
+    if label_prefix is not None:
+        indexed_labels = get_indexed_dataset_(label_prefix, dataset_type, skip_warmup)
+    else:
+        indexed_labels = None
 
-    # Get start and end indices of train/valid/train into doc-idx
+# Get start and end indices of train/valid/train into doc-idx
     # Note that doc-idx is desinged to be num-docs + 1 so we can
     # easily iterate over it.
     total_num_of_documents = indexed_dataset.doc_idx.shape[0] - 1
@@ -599,6 +609,9 @@ def _build_train_valid_test_datasets(
             end_index = splits[index + 1] + 1
             # New doc_idx view.
             indexed_dataset.set_doc_idx(doc_idx_ptr[start_index:end_index])
+            if indexed_labels is not None:
+                label_idx_ptr = indexed_labels.get_doc_idx()
+                indexed_labels.set_doc_idx(label_idx_ptr[start_index:end_index])
 
             dataset = build_dataset(
                 name,
@@ -611,6 +624,7 @@ def _build_train_valid_test_datasets(
                 max_seq_length_dec,
                 dataset_type,
                 indexed_dataset,
+                indexed_labels,
             )
 
             # Set the original pointer so dataset remains the main dataset.
@@ -618,6 +632,11 @@ def _build_train_valid_test_datasets(
             # Checks.
             assert indexed_dataset.doc_idx[0] == 0
             assert indexed_dataset.doc_idx.shape[0] == (total_num_of_documents + 1)
+            if indexed_labels is not None:
+                indexed_labels.set_doc_idx(label_idx_ptr)
+                assert indexed_labels.doc_idx[0] == 0
+
+
         return dataset
 
     train_dataset = build_split_dataset(0, "train")
@@ -638,6 +657,8 @@ def build_dataset(
     max_seq_length_dec,
     dataset_type="standard_bert",
     indexed_dataset=None,
+    indexed_labels=None,
+    label_prefix = None,
 ):
 
     from megatron.data.bert_dataset import BertDataset
@@ -685,8 +706,11 @@ def build_dataset(
         )
     elif dataset_type == DSET_TYPE_CF:
         args = get_args()
-        label_prefix = data_prefix.replace("code", "label")
-        indexed_labels = get_indexed_dataset_(label_prefix, dataset_type, skip_warmup)
+
+        if (indexed_labels is None) and (indexed_dataset is None):
+            indexed_labels = get_indexed_dataset_(label_prefix, dataset_type, skip_warmup)
+        else:
+            print('Both data and labels should be given or absent')
         dataset = CodeformerDataset(
             indexed_dataset=indexed_dataset,
             indexed_labels=indexed_labels,
@@ -694,7 +718,6 @@ def build_dataset(
             max_seq_length_dec=max_seq_length_dec,
             max_sent_num=args.max_sent_num,
             max_label_length=args.max_label_length,
-            short_seq_prob=args.short_seq_prob,
             **kwargs,
         )
     elif dataset_type == DSET_TYPE_BERT:
@@ -730,7 +753,6 @@ def get_indexed_dataset_(data_prefix, dataset_type, skip_warmup):
 
     start_time = time.time()
     multimodal = dataset_type == DSET_TYPE_MULTIMODAL
-    ## TODO what is warmup?
     indexed_dataset = MMapIndexedDataset(data_prefix, skip_warmup, multimodal)
     assert indexed_dataset.sizes.shape[0] == indexed_dataset.doc_idx[-1]
     print_rank_0(" > finished creating indexed dataset in {:4f} " "seconds".format(time.time() - start_time))

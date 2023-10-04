@@ -255,8 +255,6 @@ class Embedding(MegatronModule):
     def state_dict_for_save_checkpoint(self, prefix="", keep_vars=False):
         """For easy load."""
 
-        ##  TODO implement it for the new architecture
-
         state_dict_ = {}
         state_dict_[self._word_embeddings_key] = self.word_embeddings.state_dict(prefix=prefix, keep_vars=keep_vars)
         if self.add_position_embedding:
@@ -384,7 +382,7 @@ class СodeformerLanguageModel(MegatronModule):
                 num_tokentypes=self.num_tokentypes,
                 embedding_weights_in_fp32=args.embedding_weights_in_fp32,
             )
-            self._embedding_key = "embedding_dec"
+            self._embedding_dec_key = "embedding_dec"
 
         # Rotary positional embeddings
         self.use_rotary_position_embeddings = args.position_embedding_type == "rope"
@@ -512,13 +510,12 @@ class СodeformerLanguageModel(MegatronModule):
         output_enc_hidden=False,
     ):
 
-        pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
+        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
         # Encoder embedding.
         b = enc_input_ids.size(0)
         enc_input_ids = rearrange(enc_input_ids, "b (s t) -> (b s) t", t=self.max_sent_length + 2)
         enc_mask = rearrange(enc_mask, "b 1 s ... -> (b s) 1 ...")
 
-        # TODO May be can be done more effectively, not to call function each forward call.
         enc_position_ids = self.get_position_ids(enc_input_ids)
         dec_position_ids = self.get_position_ids(dec_input_ids)
         # TODO DISCUSS Maybe we can share embedding matrix between decoder and encoder
@@ -529,6 +526,7 @@ class СodeformerLanguageModel(MegatronModule):
             encoder_input = None
 
         # Rotary positional embeddings
+        # TODO Switch on rotary
         rotary_pos_emb = None
         if self.use_rotary_position_embeddings:
             if inference_params is not None:
@@ -579,14 +577,25 @@ class СodeformerLanguageModel(MegatronModule):
     ## TODO rewrite according current archetecture
     def state_dict_for_save_checkpoint(self, prefix="", keep_vars=False):
         """For easy load."""
-
+        print("------------------------------------")
+        print("--------- Saving model -------------")
+        print("------------------------------------")
         state_dict_ = {}
         if self.pre_process:
             state_dict_[self._embedding_key] = self.embedding.state_dict_for_save_checkpoint(
                 prefix=prefix, keep_vars=keep_vars
             )
 
+            state_dict_[self._embedding_dec_key] = self.embedding_dec.state_dict_for_save_checkpoint(
+                prefix=prefix, keep_vars=keep_vars
+            )
+
         state_dict_[self._encoder_1_key] = self.encoder_1.state_dict_for_save_checkpoint(
+            prefix=prefix, keep_vars=keep_vars
+        )
+
+        # TODO implement saving checkpoints
+        state_dict_[self._linear_key] = self.linear.state_dict(
             prefix=prefix, keep_vars=keep_vars
         )
 
@@ -606,45 +615,35 @@ class СodeformerLanguageModel(MegatronModule):
 
         return state_dict_
 
+    ## TODO rewrite according current archetecture
     def load_state_dict(self, state_dict, strict=True):
         """Customized load."""
 
+        print("------------------------------------")
+        print("--------- Loading model -------------")
+        print("------------------------------------")
+
         # Embedding.
         if self.pre_process:
-            if self._embedding_key in state_dict:
-                state_dict_ = state_dict[self._embedding_key]
-            else:
-                # for backward compatibility.
-                state_dict_ = {}
-                for key in state_dict.keys():
-                    if "_embeddings" in key:
-                        state_dict_[key] = state_dict[key]
+            assert self._embedding_key in state_dict, "No embedding weights in the checkpoint!"
+            assert self._embedding_dec_key in state_dict, "No embedding for decoder weights in the checkpoint!"
+            state_dict_ = state_dict[self._embedding_key]
+            state_dict_dec_ = state_dict[self._embedding_dec_key]
             self.embedding.load_state_dict(state_dict_, strict=strict)
+            self.embedding_dec.load_state_dict(state_dict_dec_, strict=strict)
 
         # Encoder.
         if self.add_encoder:
-            if self._encoder_key in state_dict:
-                state_dict_ = state_dict[self._encoder_key]
-            # For backward compatibility.
-            elif "transformer" in state_dict:
-                state_dict_ = state_dict["transformer"]
-            else:
-                # For backward compatibility.
-                state_dict_ = {}
-                for key in state_dict.keys():
-                    if "transformer." in key:
-                        state_dict_[key.split("transformer.")[1]] = state_dict[key]
+            assert self._encoder_1_key in state_dict, "No encoder 1 weights in the checkpoint!"
+            assert self._encoder_2_key in state_dict, "No encoder 2 weights in the checkpoint!"
+            state_dict_1_ = state_dict[self._encoder_1_key]
+            state_dict_2_ = state_dict[self._encoder_2_key]
+            self.encoder_1.load_state_dict(state_dict_1_, strict=strict)
+            self.encoder_2.load_state_dict(state_dict_2_, strict=strict)
 
-            # For backward compatibility.
-            state_dict_self_attention = {}
-            for key in state_dict_.keys():
-                if ".attention." in key:
-                    state_dict_self_attention[key.replace(".attention.", ".self_attention.")] = state_dict_[key]
-                else:
-                    state_dict_self_attention[key] = state_dict_[key]
-            state_dict_ = state_dict_self_attention
-
-            self.encoder.load_state_dict(state_dict_, strict=strict)
+        # TODO implement loading checkpoints
+        assert "linear" in state_dict, "No linear weights in the checkpoint"
+        self.linear.load_state_dict(state_dict[self._linear_key], strict=strict)
 
         # Pooler.
         if self.post_process:
@@ -656,5 +655,5 @@ class СodeformerLanguageModel(MegatronModule):
                 self.output_layer.load_state_dict(state_dict[self._output_layer_key], strict=strict)
         # Decoder.
         if self.add_decoder:
-            assert "decoder" in state_dict, "could not find data for pooler in the checkpoint"
+            assert "decoder" in state_dict, "No decoder weights in the checkpoint"
             self.decoder.load_state_dict(state_dict[self._decoder_key], strict=strict)
