@@ -1,9 +1,9 @@
 DATA_ARGS="
-    --split 800,100,100 \
-    --train-samples 3000 \
-    --val-samples-per-run 100\
-    --eval-interval-samples 100 \
-    --eval-iters-samples 100 \
+    --split 900,50,50 \
+    --train-samples 2000 \
+    --val-samples-per-run 1000\
+    --eval-interval-samples 1000 \
+    --eval-iters-samples 1000 \
 "
 
 OUTPUT_ARGS="

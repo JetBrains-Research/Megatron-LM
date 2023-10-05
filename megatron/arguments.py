@@ -182,6 +182,10 @@ def validate_args(args, defaults={}):
             print("setting global batch size to {}".format(args.global_batch_size), flush=True)
     assert args.global_batch_size > 0
 
+    # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
+    total_samples = get_total_samples(args.data_path[0], 'dataset_size.json')
+    _, args.validation_samples, args.test_samples = get_train_valid_test_sizes(args.split, total_samples)
+
     if args.eval_iters_samples:
         args.eval_iters = args.eval_iters_samples//args.global_batch_size
     else:
@@ -189,16 +193,18 @@ def validate_args(args, defaults={}):
     if args.eval_interval:
         args.eval_interval = args.eval_interval_samples // args.global_batch_size
     else:
-        args.eval_interval_samples = args.eval_interval**args.global_batch_size
-    # (args.save_interval is not None) or (args.save_interval_samples
+        args.eval_interval_samples = args.eval_interval*args.global_batch_size
     if args.save_interval_samples:
         args.save_interval = args.save_interval_samples//args.global_batch_size
     else:
         args.save_interval_samples = args.save_interval*args.global_batch_size
+    args.test_iters = args.test_samples//args.global_batch_size
     assert args.eval_iters > 0
     assert args.eval_interval > 0
+    assert args.test_iters > 0
     print(f'Eval iterations in batches {args.eval_iters}')
     print(f'Eval interval in batches {args.eval_interval}')
+    print(f"Test iterations in batches {args.test_iters}")
     # args.run_id = None
 
     if args.num_layers_per_virtual_pipeline_stage is not None:
@@ -270,9 +276,6 @@ def validate_args(args, defaults={}):
         assert args.lr_warmup_iters == 0, "expected sample-based learnig rate warmup"
         if args.lr_warmup_fraction is not None:
             assert args.lr_warmup_samples == 0, "can only specify one of lr-warmup-fraction " "and lr-warmup-samples"
-
-    total_samples = get_total_samples(args.data_path[0], 'dataset_size.json')
-    args.test_samples = get_train_valid_test_sizes(args.split, total_samples)[-1]
 
     if args.num_layers is not None:
         assert args.encoder_1_num_layers is None, "cannot have both num-layers and encoder-num-layers specified"

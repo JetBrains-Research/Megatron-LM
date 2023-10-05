@@ -172,6 +172,8 @@ def pretrain(train_valid_test_dataset_provider,
 
     if args.do_valid:
         prefix = f'iteration {iteration} on validation set'
+        # args.eval_iters
+        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
         evaluate_and_print_results(prefix, forward_step_func,
                                    valid_data_iterator, model,
                                    iteration, process_non_loss_data_func, config,
@@ -182,7 +184,7 @@ def pretrain(train_valid_test_dataset_provider,
         evaluate_and_print_results(prefix, forward_step_func,
                                    test_data_iterator, model,
                                    iteration, process_non_loss_data_func, config,
-                                   verbose=True, write_to_tensorboard=not args.skip_train)
+                                   verbose=True, write_to_tensorboard=not args.skip_train, test=True)
 
 
 def update_train_iters(args):
@@ -816,7 +818,8 @@ def evaluate(forward_step_func,
              model,
              process_non_loss_data_func,
              config,
-             verbose=False):
+             verbose=False,
+             test=False):
     """Evaluation."""
     args = get_args()
 
@@ -833,15 +836,18 @@ def evaluate(forward_step_func,
     eval_batch_size = args.global_batch_size
     eval_num_microbatches = eval_batch_size // \
         (args.micro_batch_size * args.data_parallel_size)
-
+    if not test:
+        eval_iters = args.eval_iters
+    else:
+        eval_iters = args.test_iters
     with torch.no_grad():
         iteration = 0
         if verbose:
-            print_rank_0(f'Evaluating on {args.eval_iters * eval_batch_size} samples')
-        while iteration < args.eval_iters:
+            print_rank_0(f'Evaluating on {eval_iters * eval_batch_size} samples')
+        while iteration < eval_iters:
             iteration += 1
             if verbose:
-                print_rank_0(f'Evaluating iter {iteration}/{args.eval_iters}')
+                print_rank_0(f'Evaluating iter {iteration}/{eval_iters}')
 
             forward_backward_func = get_forward_backward_func()
             # Don't care about timing during evaluation
@@ -888,14 +894,14 @@ def evaluate(forward_step_func,
         model_module.train()
 
     for key in total_loss_dict:
-        total_loss_dict[key] /= args.eval_iters * eval_num_microbatches
+        total_loss_dict[key] /= eval_iters * eval_num_microbatches
 
     return total_loss_dict, collected_non_loss_data
 
 def evaluate_and_print_results(prefix, forward_step_func,
                                data_iterator, model,
                                iteration, process_non_loss_data_func, config,
-                               verbose=False, write_to_tensorboard=True):
+                               verbose=False, write_to_tensorboard=True, test=False):
     """Helper function to evaluate and dump results on screen."""
     args = get_args()
     if write_to_tensorboard:
@@ -905,7 +911,7 @@ def evaluate_and_print_results(prefix, forward_step_func,
 
     total_loss_dict, collected_non_loss_data = evaluate(
         forward_step_func, data_iterator, model,
-        process_non_loss_data_func, config, verbose)
+        process_non_loss_data_func, config, verbose, test=test)
     string = ' validation loss at {} | '.format(prefix)
     # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
     for key in total_loss_dict:
@@ -955,15 +961,14 @@ def build_train_valid_test_datasets(build_train_valid_test_datasets_provider):
         train_samples = args.train_iters * args.global_batch_size
     if not args.codeformer:
         eval_iters = (args.train_iters // args.eval_interval + 1) * args.eval_iters
-        test_iters = args.eval_iters
         train_val_test_num_samples = [train_samples,
                                       eval_iters * args.global_batch_size,
-                                      test_iters * args.global_batch_size]
+                                      args.test_iters * args.global_batch_size]
     elif args.codeformer:
-        total_val_samples = (train_samples // args.eval_interval_samples + 1) * args.eval_iters_samples
+        total_val_samples = (train_samples // args.eval_interval_samples + 1) * args.eval_iters_samples #+ args.validation_samples
         train_val_test_num_samples = [train_samples,
                                       total_val_samples,
-                                      args.test_samples]
+                                      args.test_iters*args.global_batch_size]
 
     print_rank_0(' > datasets target sizes (minimum size):')
     print_rank_0('    train:      {}'.format(train_val_test_num_samples[0]))
