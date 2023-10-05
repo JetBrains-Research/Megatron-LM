@@ -45,4 +45,4 @@ torchrun $DISTRIBUTED_ARGS pretrain_codeformer.py \
     $OUTPUT_ARGS \
     --distributed-backend nccl \
     --save $CHECKPOINT_PATH \
-    --load $CHECKPOINT_PATH
+#    --load $CHECKPOINT_PATH

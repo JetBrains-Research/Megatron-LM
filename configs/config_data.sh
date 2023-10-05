@@ -1,6 +1,6 @@
 DATA_ARGS="
     --split 800,100,100 \
-    --train-samples 1600 \
+    --train-samples 800 \
     --val-samples-per-run 100\
     --eval-interval-samples 100 \
     --eval-iters-samples 100 \

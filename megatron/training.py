@@ -156,7 +156,7 @@ def pretrain(train_valid_test_dataset_provider,
 
         iteration = 0
         if args.do_train and args.train_iters > 0:
-            iteration = train(forward_step_func,
+            iteration, run_id = train(forward_step_func,
                               model, optimizer, opt_param_scheduler,
                               train_data_iterator, valid_data_iterator,
                               process_non_loss_data_func, config)
@@ -164,7 +164,7 @@ def pretrain(train_valid_test_dataset_provider,
         print_datetime('after training is done')
 
         if args.save and iteration != 0:
-            save_checkpoint(iteration, model, optimizer, opt_param_scheduler)
+            save_checkpoint(iteration, run_id, model, optimizer, opt_param_scheduler)
     else:
         print_rank_0('skipping training (--skip-train is on) ...')
 
@@ -810,7 +810,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
            torch.distributed.get_rank() in args.profile_ranks:
             torch.cuda.cudart().cudaProfilerStop()
 
-    return iteration
+    return iteration, run_id
 
 
 def evaluate(forward_step_func,
