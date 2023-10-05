@@ -236,6 +236,9 @@ def _init_autoresume():
 def init_wandb():
     args = get_args()
     if args.rank == (args.world_size - 1):
+        # import pydevd_pycharm
+        #
+        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
         wandb.init(
             name=os.path.basename(args.save),
             entity=args.wandb_entity_name,
@@ -243,7 +246,15 @@ def init_wandb():
             group=args.wandb_group_name,
             config=args,
             sync_tensorboard = True,
+            resume = args.run_id
         )
+        if args.run_id is None:
+            args.run_id = wandb.run.id
+        with open(os.path.join(args.tensorboard_dir, 'wandb_run_id.txt'), 'w') as f:
+            f.write(wandb.run.id)
+
+        print(f'------------{args.run_id}-----------')
+    return args.run_id
 
 def _set_random_seed(seed_, data_parallel_random_init=False):
     """Set random seed for reproducability."""

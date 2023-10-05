@@ -212,10 +212,9 @@ def get_rng_state():
     return rng_state_list
 
 
-def save_checkpoint(iteration, model, optimizer, opt_param_scheduler):
+def save_checkpoint(iteration, run_id, model, optimizer, opt_param_scheduler):
     """Save a model checkpoint."""
     args = get_args()
-
     # Only rank zero of the data parallel writes to the disk.
     model = unwrap_model(model)
 
@@ -238,12 +237,17 @@ def save_checkpoint(iteration, model, optimizer, opt_param_scheduler):
     # Collect args, model, RNG.
     if not torch.distributed.is_initialized() \
        or mpu.get_data_parallel_rank() == 0:
-
+        # import pydevd_pycharm
+        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
+        with open(os.path.join(args.tensorboard_dir, 'wandb_run_id.txt'), 'r') as f:
+            run_id = f.read()
+        args.run_id = run_id
         # Arguments, iteration, and model.
         state_dict = {}
         state_dict['args'] = args
         state_dict['checkpoint_version'] = 3.0
         state_dict['iteration'] = iteration
+        state_dict["run_id"] = run_id
         if len(model) == 1:
             state_dict['model'] = model[0].state_dict_for_save_checkpoint()
         else:
@@ -408,8 +412,8 @@ def _load_base_checkpoint(load_dir, rank0=False):
         print_rank_0('could not load the checkpoint')
         print_rank_0(e)
         sys.exit()
-
-    return state_dict, checkpoint_name, release
+    run_id = state_dict['run_id']
+    return state_dict, checkpoint_name, release, run_id
 
 
 def load_args_from_checkpoint(args, load_arg='load'):
@@ -503,9 +507,10 @@ def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', stri
     load_dir = getattr(args, load_arg)
 
     model = unwrap_model(model)
+    state_dict, checkpoint_name, release, run_id = _load_base_checkpoint(load_dir, rank0=False)
 
-    state_dict, checkpoint_name, release = _load_base_checkpoint(load_dir, rank0=False)
-
+    # import pydevd_pycharm
+    # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
     # Checkpoint not loaded.
     if state_dict is None:
 
@@ -516,7 +521,7 @@ def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', stri
             sys.exit()
 
         # Iteration defaults to 0.
-        return 0
+        return 0, None, 0
 
     # Set checkpoint version.
     set_checkpoint_version(state_dict.get('checkpoint_version', 0))
@@ -640,7 +645,7 @@ def load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='load', stri
     print_rank_0(f'  successfully loaded checkpoint from {args.load} '
                  f'at iteration {iteration}')
 
-    return iteration
+    return iteration, run_id
 
 
 def load_biencoder_checkpoint(model, only_query_model=False,

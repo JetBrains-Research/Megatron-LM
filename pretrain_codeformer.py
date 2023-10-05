@@ -16,11 +16,11 @@ from megatron.utils import average_losses_across_data_parallel_group
 from megatron.arguments import core_transformer_config_from_args
 import pydevd_pycharm
 
-# TODO delete all pydevd_pycharm instances at the end
+# TODO FINAL delete all pydevd_pycharm instances at the end
 # import pydevd_pycharm
 # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
 
-# TODO Change description
+# TODO FINAL Change description
 """
 Pipeline parallelism for T5
 ===========================

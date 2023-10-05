@@ -106,7 +106,7 @@ def build_training_sample(
     eos_id=None,
 ):
     """Build training sample.
-    ## TODO rewrite doc
+    ## TODO FINAL rewrite doc
 
     Arguments:
         sample: A list of sentences in which each sentence is a list token ids.

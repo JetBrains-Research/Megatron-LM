@@ -81,7 +81,10 @@ class Encoder(object):
         try:
             tree_split_res = Encoder.splitter_ast.split(data["code"])[0]
         except:
-            # TODO Some time before 04.10.2023 there were no errors, I changed nothing, but not it is 11 errors per 1000.
+            # TODO Some time before 04.10.2023 there were no errors, I changed nothing, but not it is 13 errors per 3000.
+            # print('---------------------')
+            # print(data)
+            # print("---------------------")
             return ([], [])
         label_tokenized = Encoder.tokenizer.tokenize(
             data["label"].replace("|", " "),

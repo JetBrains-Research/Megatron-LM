@@ -5,6 +5,7 @@ MODEL_ARGS="
     --decoder-num-layers 10 \
     --hidden-size 768 \
     --num-attention-heads 8 \
+    --position-embedding-type rope\
     --kv-channels 64 \
     --ffn-hidden-size 1024 \
     --micro-batch-size 4 \
@@ -18,7 +19,7 @@ MODEL_ARGS="
     --vocab-extra-ids 100 \
 "
 #     --epochs 2 \
-# TODO May be rename sent -> subtree
+# TODO FINAL May be rename sent -> subtree
 # Note, that finally label would be (max-label-length+2) due to BOS and EOS tokens.
 DATA_PROC_ARGS="
 --max-sent-num 128 \
@@ -27,8 +28,6 @@ DATA_PROC_ARGS="
 --language java \
 --tree-sitter-path $TREE_SITTER_PATH
 "
-
-# TODO somewhere I use old definition of max-sent-length = max-sent-length + 2. Fix it.
 
 #    --train-iters 500 \
 #    --lr-decay-iters 1000000 \

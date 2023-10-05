@@ -356,7 +356,9 @@ class СodeformerLanguageModel(MegatronModule):
         self.untie_embeddings_and_output_weights = args.untie_embeddings_and_output_weights
         self.add_encoder = add_encoder
         self.add_decoder = add_decoder
-        self.max_sent_length = args.max_sent_length
+        self.max_sent_length = args.max_sent_length + 2
+        self.max_sent_num = args.max_sent_num
+        self.max_label_length = args.max_label_length + 2
 
         # Embeddings.
         if self.pre_process:
@@ -387,7 +389,6 @@ class СodeformerLanguageModel(MegatronModule):
         # Rotary positional embeddings
         self.use_rotary_position_embeddings = args.position_embedding_type == "rope"
         if self.use_rotary_position_embeddings:
-            self.seq_length = args.max_sent_length
             rotary_dim = args.hidden_size // args.num_attention_heads if args.kv_channels is None else args.kv_channels
 
             if args.rotary_percent < 1.0:
@@ -396,7 +397,16 @@ class СodeformerLanguageModel(MegatronModule):
             # partial rotary embeddings, which is better than full rotary
             # Wang and Komatsuzaki et al
             # https://github.com/kingoflolz/mesh-transformer-jax/
-            self.rotary_pos_emb = RotaryEmbedding(
+            # TODO CHECK that we need three RoPE instances
+            self.rotary_pos_emb_1 = RotaryEmbedding(
+                rotary_dim, seq_len_interpolation_factor=args.rotary_seq_len_interpolation_factor
+            )
+
+            self.rotary_pos_emb_2 = RotaryEmbedding(
+                rotary_dim, seq_len_interpolation_factor=args.rotary_seq_len_interpolation_factor
+            )
+
+            self.rotary_pos_emb_dec = RotaryEmbedding(
                 rotary_dim, seq_len_interpolation_factor=args.rotary_seq_len_interpolation_factor
             )
         # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
@@ -513,12 +523,11 @@ class СodeformerLanguageModel(MegatronModule):
         # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
         # Encoder embedding.
         b = enc_input_ids.size(0)
-        enc_input_ids = rearrange(enc_input_ids, "b (s t) -> (b s) t", t=self.max_sent_length + 2)
+        enc_input_ids = rearrange(enc_input_ids, "b (s t) -> (b s) t", t=self.max_sent_length)
         enc_mask = rearrange(enc_mask, "b 1 s ... -> (b s) 1 ...")
 
         enc_position_ids = self.get_position_ids(enc_input_ids)
         dec_position_ids = self.get_position_ids(dec_input_ids)
-        # TODO DISCUSS Maybe we can share embedding matrix between decoder and encoder
         if self.pre_process:
             encoder_input = self.embedding(enc_input_ids, enc_position_ids, tokentype_ids=tokentype_ids)
             decoder_input = self.embedding_dec(dec_input_ids, dec_position_ids, tokentype_ids=tokentype_ids)
@@ -526,15 +535,20 @@ class СodeformerLanguageModel(MegatronModule):
             encoder_input = None
 
         # Rotary positional embeddings
-        # TODO Switch on rotary
         rotary_pos_emb = None
         if self.use_rotary_position_embeddings:
             if inference_params is not None:
-                rotary_pos_emb = self.rotary_pos_emb(inference_params.max_sequence_length)
+                # TODO FINAL may be for inference something should be changed
+                # rotary_pos_emb = self.rotary_pos_emb(inference_params.max_sequence_length)
+                rotary_pos_emb_1 = self.rotary_pos_emb_1(self.max_sent_length)
+                rotary_pos_emb_2 = self.rotary_pos_emb_2(self.max_sent_num)
+                rotary_pos_emb_dec = self.rotary_pos_emb_dec(self.max_sent_num)
             else:
-                rotary_pos_emb = self.rotary_pos_emb(self.seq_length)
-
-        # dec_mask,
+                rotary_pos_emb_1 = self.rotary_pos_emb_1(self.max_sent_length)
+                rotary_pos_emb_2 = self.rotary_pos_emb_2(self.max_sent_num)
+                rotary_pos_emb_dec = self.rotary_pos_emb_dec(self.max_label_length)
+    
+    # dec_mask,
         # enc_dec_mask,
         # sent_mask,
 
@@ -544,7 +558,7 @@ class СodeformerLanguageModel(MegatronModule):
                 encoder_input,
                 attention_mask=enc_mask,
                 inference_params=inference_params,
-                rotary_pos_emb=rotary_pos_emb,
+                rotary_pos_emb=rotary_pos_emb_1,
             )
 
             encoder_output = rearrange(encoder_output, "t (b s) d -> s b d t", b=b)
@@ -554,7 +568,7 @@ class СodeformerLanguageModel(MegatronModule):
                 encoder_output,
                 attention_mask=sent_mask,
                 inference_params=inference_params,
-                rotary_pos_emb=rotary_pos_emb,
+                rotary_pos_emb=rotary_pos_emb_2,
             )
 
             output = self.decoder(
@@ -563,7 +577,7 @@ class СodeformerLanguageModel(MegatronModule):
                 encoder_output=encoder_output,
                 enc_dec_attn_mask=enc_dec_mask,
                 inference_params=inference_params,
-                rotary_pos_emb=rotary_pos_emb,
+                rotary_pos_emb=rotary_pos_emb_dec,
             )
 
         else:
@@ -574,12 +588,11 @@ class СodeformerLanguageModel(MegatronModule):
         # similarity between two sequences by average pooling
         return output
 
-    ## TODO rewrite according current archetecture
     def state_dict_for_save_checkpoint(self, prefix="", keep_vars=False):
         """For easy load."""
-        print("------------------------------------")
-        print("--------- Saving model -------------")
-        print("------------------------------------")
+        # print("------------------------------------")
+        # print("--------- Saving model -------------")
+        # print("------------------------------------")
         state_dict_ = {}
         if self.pre_process:
             state_dict_[self._embedding_key] = self.embedding.state_dict_for_save_checkpoint(
@@ -589,20 +602,15 @@ class СodeformerLanguageModel(MegatronModule):
             state_dict_[self._embedding_dec_key] = self.embedding_dec.state_dict_for_save_checkpoint(
                 prefix=prefix, keep_vars=keep_vars
             )
-
         state_dict_[self._encoder_1_key] = self.encoder_1.state_dict_for_save_checkpoint(
             prefix=prefix, keep_vars=keep_vars
         )
-
-        # TODO implement saving checkpoints
         state_dict_[self._linear_key] = self.linear.state_dict(
             prefix=prefix, keep_vars=keep_vars
         )
-
         state_dict_[self._encoder_2_key] = self.encoder_2.state_dict_for_save_checkpoint(
             prefix=prefix, keep_vars=keep_vars
         )
-
         if self.post_process:
             if self.add_pooler:
                 state_dict_[self._pooler_key] = self.pooler.state_dict_for_save_checkpoint(
@@ -615,13 +623,12 @@ class СodeformerLanguageModel(MegatronModule):
 
         return state_dict_
 
-    ## TODO rewrite according current archetecture
     def load_state_dict(self, state_dict, strict=True):
         """Customized load."""
 
-        print("------------------------------------")
-        print("--------- Loading model -------------")
-        print("------------------------------------")
+        # print("------------------------------------")
+        # print("--------- Loading model -------------")
+        # print("------------------------------------")
 
         # Embedding.
         if self.pre_process:
@@ -641,7 +648,6 @@ class СodeformerLanguageModel(MegatronModule):
             self.encoder_1.load_state_dict(state_dict_1_, strict=strict)
             self.encoder_2.load_state_dict(state_dict_2_, strict=strict)
 
-        # TODO implement loading checkpoints
         assert "linear" in state_dict, "No linear weights in the checkpoint"
         self.linear.load_state_dict(state_dict[self._linear_key], strict=strict)
 

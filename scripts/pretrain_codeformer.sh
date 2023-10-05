@@ -13,6 +13,7 @@ DATA_PATHS="
     --data-path $DATA_PROCESSED_PATH \
     --tree-sitter-path $TREE_SITTER_PATH \
     --vocab-file $VOCAB_FILE \
+    --tensorboard-dir $LOGGING_PATH \
 "
 
 export WANDB_DISABLE_GIT=true
@@ -26,6 +27,7 @@ torchrun pretrain_codeformer.py \
     $DATA_PROC_ARGS \
     $OUTPUT_ARGS \
     --save $CHECKPOINT_PATH \
+    --load $CHECKPOINT_PATH
 #    --tensorboard-dir $LOGGING_PATH
 #    --encoder-seq-length 512 \
 #    --decoder-seq-length 512 \

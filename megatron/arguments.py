@@ -78,10 +78,9 @@ def get_train_valid_test_sizes(splits_string, size):
     splits_sum = sum(splits)
     assert splits_sum > 0.0
     splits = [split / splits_sum for split in splits]
-    splits_sample_size = []
-    for index, split in enumerate(splits):
-        splits_sample_size.append(int(round(split * float(size))))
-    assert sum(splits_sample_size) <= size
+    splits_sample_size = [int(round(split * float(size))) for split in splits]
+    splits_sample_size[0] += size - sum(splits_sample_size)
+    assert sum(splits_sample_size) == size
     return splits_sample_size
 
 def get_total_samples(data_path, meta_filename):
@@ -191,10 +190,16 @@ def validate_args(args, defaults={}):
         args.eval_interval = args.eval_interval_samples // args.global_batch_size
     else:
         args.eval_interval_samples = args.eval_interval**args.global_batch_size
+    # (args.save_interval is not None) or (args.save_interval_samples
+    if args.save_interval_samples:
+        args.save_interval = args.save_interval_samples//args.global_batch_size
+    else:
+        args.save_interval_samples = args.save_interval*args.global_batch_size
     assert args.eval_iters > 0
     assert args.eval_interval > 0
     print(f'Eval iterations in batches {args.eval_iters}')
     print(f'Eval interval in batches {args.eval_interval}')
+    # args.run_id = None
 
     if args.num_layers_per_virtual_pipeline_stage is not None:
         assert args.pipeline_model_parallel_size > 2, (
@@ -325,7 +330,7 @@ def validate_args(args, defaults={}):
     if args.lr is not None:
         assert args.min_lr <= args.lr
     if args.save is not None:
-        assert args.save_interval is not None
+        assert (args.save_interval is not None) or (args.save_interval_samples is not None)
     # Mixed precision checks.
     if args.fp16_lm_cross_entropy:
         assert args.fp16, "lm cross entropy in fp16 only support in fp16 mode."
@@ -828,6 +833,7 @@ def _add_logging_args(parser):
     group.add_argument("--wandb-entity-name", type=str, default=None, help="Name of wandb entity for reporting")
     group.add_argument("--wandb-project-name", type=str, default=None, help="Name of wandb project")
     group.add_argument("--wandb-group-name", type=str, default=None, help="Name of wandb group")
+    group.add_argument("--run-id", type=str, default=None, help="Name of wandb run")
 
     return parser
 
@@ -1193,6 +1199,7 @@ def _add_checkpointing_args(parser):
 
     group.add_argument("--save", type=str, default=None, help="Output directory to save checkpoints to.")
     group.add_argument("--save-interval", type=int, default=None, help="Number of iterations between checkpoint saves.")
+    group.add_argument("--save-interval-samples", type=int, default=None, help="Number of iterations between checkpoint saves.")
     group.add_argument("--no-save-optim", action="store_true", default=None, help="Do not save current optimizer.")
     group.add_argument("--no-save-rng", action="store_true", default=None, help="Do not save current rng state.")
     group.add_argument("--load", type=str, default=None, help="Directory containing a model checkpoint.")

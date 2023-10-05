@@ -28,6 +28,7 @@ DATA_PATHS="
     --data-path $DATA_PROCESSED_PATH \
     --tree-sitter-path $TREE_SITTER_PATH \
     --vocab-file $VOCAB_FILE \
+    --tensorboard-dir $LOGGING_PATH \
 "
 
 export WANDB_DISABLE_GIT=true
@@ -44,4 +45,4 @@ torchrun $DISTRIBUTED_ARGS pretrain_codeformer.py \
     $OUTPUT_ARGS \
     --distributed-backend nccl \
     --save $CHECKPOINT_PATH \
-#    --load $CHECKPOINT_PATH
+    --load $CHECKPOINT_PATH

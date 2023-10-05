@@ -10,4 +10,3 @@ DATA_FILE_PATH="${DATA_PATH}${DATA_FILE}"
 
 VOCAB_FILE="${MODEL_PATH}/bert-large-uncased-vocab.txt"
 MERGE_FILE="gpt2-merges.txt"
-## TODO remove VOCAB_FILE as requred parameter if HF tokenizer is used
