@@ -7,15 +7,12 @@ import torch
 from megatron import get_args
 from megatron.core import tensor_parallel
 from megatron.model.enums import AttnMaskType
-
 from megatron.model.codeformer_PL_model import parallel_lm_logits
 from megatron.model.codeformer_PL_model import get_language_model
-
-# from megatron.model.language_model import parallel_lm_logits
-# from megatron.model.language_model import get_language_model
-from megatron.model import LayerNorm
-from megatron.model.utils import openai_gelu, get_linear_layer
 from .module import MegatronModule
+from megatron import get_tokenizer
+
+import pydevd_pycharm
 
 
 def extended_attention_mask(attention_mask_list):
@@ -85,6 +82,11 @@ class CodeformerModel(MegatronModule):
             self.lm_head = LMHead(self.shared_embedding_or_output_weight().size(0), parallel_output)
             self._lm_head_key = "lm_head"
 
+        from codeformer_utils.metrics_calculation import CFMetrics
+        tokenizer = get_tokenizer()
+        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
+        self.CF_metrics = CFMetrics(tokenizer)
+
     def set_input_tensor(self, input_tensor):
         """See megatron.model.transformer.set_input_tensor()"""
         self.language_model.set_input_tensor(input_tensor)
@@ -104,9 +106,7 @@ class CodeformerModel(MegatronModule):
     ):
 
         # Converting the attention masks to proper parameter settings
-        # import pydevd_pycharm
 
-        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
         enc_mask, sent_mask, enc_dec_mask, dec_mask = extended_attention_mask(
             [enc_mask, sent_mask, enc_dec_mask, dec_mask]
         )
@@ -141,6 +141,12 @@ class CodeformerModel(MegatronModule):
                     lm_loss = tensor_parallel.vocab_parallel_cross_entropy(lm_logits.float(), lm_labels)
                 # [s b] => [b s]
                 lm_loss = lm_loss.transpose(0, 1).contiguous()
+            if not self.language_model.training:
+                # lm_labels [s, b]
+                # lm_logits [s, b, vocab]
+                # lm_loss [b, s]
+                result = self.CF_metrics.calc_metrics(lm_logits, lm_labels)
+                return lm_loss, result
             return lm_loss
         else:
             decoder_output = lm_output

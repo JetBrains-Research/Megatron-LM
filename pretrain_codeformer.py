@@ -105,15 +105,22 @@ def get_batch(data_iterator):
 
     return docs_enc, sent_nums, labels, loss_mask, enc_mask, sent_mask, enc_dec_mask, dec_mask
 
+def loss_func(loss_mask, output):
+    result_dict_ = {}
+    if isinstance(output, tuple):
+        # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
+        lm_loss, result_dict_ = output
+    else:
+        lm_loss = output
 
-def loss_func(loss_mask, output_tensor):
-    lm_loss_ = output_tensor.float()
+    lm_loss_ = lm_loss.float()
     lm_loss = torch.sum(lm_loss_.view(-1) * loss_mask.reshape(-1)) / loss_mask.sum()
 
     loss = lm_loss
     averaged_losses = average_losses_across_data_parallel_group([lm_loss])
-
-    return loss, {"lm loss": averaged_losses[0]}
+    result_dict = {"CE loss": averaged_losses[0]}
+    result_dict.update(result_dict_)
+    return loss, result_dict
 
 
 def forward_step(data_iterator, model):

@@ -27,12 +27,5 @@ torchrun pretrain_codeformer.py \
     $DATA_PROC_ARGS \
     $OUTPUT_ARGS \
     --save $CHECKPOINT_PATH \
-    --load $CHECKPOINT_PATH
-#    --tensorboard-dir $LOGGING_PATH
-#    --encoder-seq-length 512 \
-#    --decoder-seq-length 512 \
-#    --max-position-embeddings 512 \
-
-# --load $CHECKPOINT_PATH
-# codeformer
+#    --load $CHECKPOINT_PATH
 

@@ -560,7 +560,7 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
 
     # Tensorboard values.
     # Timer requires all the ranks to call.
-    # TODO DISCUSS add some metrics that we need
+
     if args.log_timers_to_tensorboard and \
        (iteration % args.tensorboard_log_interval == 0):
         timers.write(timers_to_log, writer, iteration,
@@ -709,8 +709,6 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
     timers('interval-time', log_level=0).start(barrier=True)
     print_datetime('before the start of training step')
     report_memory_flag = True
-    # import pydevd_pycharm
-    # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
     while iteration < args.train_iters: #args.train_iters = args.train_samples // args.global_batch_size
         if args.profile and \
            iteration == args.profile_step_start and \
@@ -909,21 +907,23 @@ def evaluate_and_print_results(prefix, forward_step_func,
         forward_step_func, data_iterator, model,
         process_non_loss_data_func, config, verbose)
     string = ' validation loss at {} | '.format(prefix)
+    # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
     for key in total_loss_dict:
-        string += '{} value: {:.6E} | '.format(key, total_loss_dict[key].item())
-        ppl = math.exp(min(20, total_loss_dict[key].item()))
-        string += '{} PPL: {:.6E} | '.format(key, ppl)
+        string += '{}: {:.6E} | '.format(key, total_loss_dict[key].item())
+        if key == 'CE loss':
+            ppl = math.exp(min(20, total_loss_dict[key].item()))
+            string += '{} PPL: {:.6E} | '.format(key, ppl)
         if writer:
-            writer.add_scalar('{} validation'.format(key),
+            writer.add_scalar('val/{}'.format(key),
                               total_loss_dict[key].item(),
                               iteration)
-            writer.add_scalar('{} validation vs samples'.format(key),
+            writer.add_scalar('val/{} vs samples'.format(key),
                               total_loss_dict[key].item(),
                               args.consumed_train_samples)
             if args.log_validation_ppl_to_tensorboard:
-                writer.add_scalar('{} validation ppl'.format(key), ppl,
+                writer.add_scalar('val/{} ppl'.format(key), ppl,
                                   iteration)
-                writer.add_scalar('{} validation ppl vs samples'.format(key),
+                writer.add_scalar('val/{} ppl vs samples'.format(key),
                                   ppl, args.consumed_train_samples)
 
     if process_non_loss_data_func is not None and writer and is_last_rank():

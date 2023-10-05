@@ -1473,6 +1473,8 @@ def _add_data_args(parser):
     group.add_argument("--max-sent-num", type=int, default=None, help="Max number of trees in doc (method).")
     group.add_argument("--max-sent-length", type=int, default=None, help="Max len of subsequence tree.")
     group.add_argument("--max-label-length", type=int, default=None, help="Max len of label (method name).")
+    group.add_argument("--max-context-length", type=int, default=None, help="Max context size.")
+
     group.add_argument("--merge-file", type=str, default=None, help="Path to the BPE merge file.")
     group.add_argument(
         "--vocab-extra-ids",

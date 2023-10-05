@@ -69,7 +69,7 @@ class Encoder(object):
         config = {
             "programming_language": self.args.language,
             "path_to_tree_sitter": f"{self.args.tree_sitter_path}/tree-sitter-{self.args.language}",
-            "max_code_parts": 4096,
+            "max_code_parts": self.args.max_context_length,
             "max_subsequence_size": self.args.max_sent_length,
             "max_subsequences_number": self.args.max_sent_num,
         }

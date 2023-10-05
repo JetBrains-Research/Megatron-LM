@@ -1,6 +1,6 @@
 DATA_ARGS="
     --split 800,100,100 \
-    --train-samples 800 \
+    --train-samples 3000 \
     --val-samples-per-run 100\
     --eval-interval-samples 100 \
     --eval-iters-samples 100 \
@@ -8,7 +8,7 @@ DATA_ARGS="
 
 OUTPUT_ARGS="
     --log-interval 100 \
-    --save-interval-samples 1000 \
+    --save-interval-samples 30000 \
     --wandb-entity-name machine-learning-methods-in-software-engineering \
     --wandb-project-name dev
 "
