@@ -560,6 +560,7 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
 
     # Tensorboard values.
     # Timer requires all the ranks to call.
+    # TODO DISCUSS add some metrics that we need
     if args.log_timers_to_tensorboard and \
        (iteration % args.tensorboard_log_interval == 0):
         timers.write(timers_to_log, writer, iteration,

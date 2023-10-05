@@ -8,7 +8,7 @@ DATA_ARGS="
 
 OUTPUT_ARGS="
     --log-interval 100 \
-    --save-interval-samples 100 \
+    --save-interval-samples 1000 \
     --wandb-entity-name machine-learning-methods-in-software-engineering \
     --wandb-project-name dev
 "

@@ -710,6 +710,8 @@ def build_dataset(
 
         if (indexed_labels is None) and (indexed_dataset is None):
             indexed_labels = get_indexed_dataset_(label_prefix, dataset_type, skip_warmup)
+        elif (indexed_labels is not None) and (indexed_dataset is not None):
+            pass
         else:
             print('Both data and labels should be given or absent')
         dataset = CodeformerDataset(

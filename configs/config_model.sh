@@ -1,10 +1,12 @@
+# NB! Flash attention supports only attn head dim > 128
 MODEL_ARGS="
     --encoder-num-layers 6 \
     --encoder-1-num-layers 6 \
     --encoder-2-num-layers 8 \
     --decoder-num-layers 10 \
-    --hidden-size 768 \
+    --hidden-size 1024 \
     --num-attention-heads 8 \
+    --use-flash-attn
     --position-embedding-type rope\
     --kv-channels 64 \
     --ffn-hidden-size 1024 \
