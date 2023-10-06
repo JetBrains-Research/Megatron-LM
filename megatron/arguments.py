@@ -1016,7 +1016,7 @@ def _add_training_args(parser):
         "training runs. Note that either train-iters or "
         "train-samples should be provided.",
     )
-    group.add_argument("--val-samples-per-run", type=int,default=100, help="Val samples per val run")
+    # group.add_argument("--val-samples-per-run", type=int,default=100, help="Val samples per val run")
     # group.add_argument("--test-samples", type=int, default=100, help="Val samples per val run")
 
     group.add_argument("--log-interval", type=int, default=100, help="Report loss and timing interval.")

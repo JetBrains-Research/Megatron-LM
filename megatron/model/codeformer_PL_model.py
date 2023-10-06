@@ -522,19 +522,19 @@ class СodeformerLanguageModel(MegatronModule):
 
         # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
         # Encoder embedding.
-        b = enc_input_ids.size(0)
+        b = sent_nums.size(0)
         max_sent_num_batch = sent_mask.size(2)
         # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
-        enc_input_ids = rearrange(enc_input_ids, "b (s t) -> (b s) t", t=self.max_sent_length)
-        enc_mask = rearrange(enc_mask, "b 1 s ... -> (b s) 1 ...")
+        # enc_input_ids = rearrange(enc_input_ids, "b (s t) -> (b s) t", t=self.max_sent_length)
+        # enc_mask = rearrange(enc_mask, "b 1 s ... -> (b s) 1 ...")
 
         enc_position_ids = self.get_position_ids(enc_input_ids)
         dec_position_ids = self.get_position_ids(dec_input_ids)
         if self.pre_process:
-            encoder_input = self.embedding(enc_input_ids, enc_position_ids, tokentype_ids=tokentype_ids)
+            input_embeddings = self.embedding(enc_input_ids, enc_position_ids, tokentype_ids=tokentype_ids)
             decoder_input = self.embedding_dec(dec_input_ids, dec_position_ids, tokentype_ids=tokentype_ids)
         else:
-            encoder_input = None
+            input_embeddings = None
 
         # Rotary positional embeddings
         rotary_pos_emb = None
@@ -549,25 +549,30 @@ class СodeformerLanguageModel(MegatronModule):
                 rotary_pos_emb_1 = self.rotary_pos_emb_1(self.max_sent_length)
                 rotary_pos_emb_2 = self.rotary_pos_emb_2(max_sent_num_batch)
                 rotary_pos_emb_dec = self.rotary_pos_emb_dec(self.max_label_length)
-    
-    # dec_mask,
-        # enc_dec_mask,
-        # sent_mask,
 
-        # Run encoder.
         if enc_hidden_states is None:
-            encoder_output = self.encoder_1(
-                encoder_input,
+            input_embeddings = self.encoder_1(
+                input_embeddings,
                 attention_mask=enc_mask,
                 inference_params=inference_params,
                 rotary_pos_emb=rotary_pos_emb_1,
             )
 
-            encoder_output = rearrange(encoder_output, "t (b s) d -> s b d t", b=b)
-            encoder_output = self.linear(encoder_output).squeeze(-1)
+            # input_embeddings = rearrange(input_embeddings, "t (b s) d -> s b d t", b=b)
+            input_embeddings = input_embeddings.permute(1, 2, 0) # t (b s) d -> (b s) d t
+            input_embeddings = self.linear(input_embeddings).squeeze(-1) # (b s) d t -> (b s) d
 
-            encoder_output = self.encoder_2(
-                encoder_output,
+            # reshaping embeddings to batches (b s) d -> s_max b d
+            encoder_input = torch.zeros((max_sent_num_batch, b, input_embeddings.size(-1)), device=input_embeddings.device)
+            start_idx = 0
+            for i in range(b):
+                size = sent_nums[i].item()
+                end_idx = start_idx + size
+                encoder_input[:size, i] = input_embeddings[start_idx:end_idx]
+                start_idx = end_idx
+
+            input_embeddings = self.encoder_2(
+                encoder_input,
                 attention_mask=sent_mask,
                 inference_params=inference_params,
                 rotary_pos_emb=rotary_pos_emb_2,
@@ -576,14 +581,14 @@ class СodeformerLanguageModel(MegatronModule):
             output = self.decoder(
                 decoder_input,
                 attention_mask=dec_mask,
-                encoder_output=encoder_output,
+                encoder_output=input_embeddings,
                 enc_dec_attn_mask=enc_dec_mask,
                 inference_params=inference_params,
                 rotary_pos_emb=rotary_pos_emb_dec,
             )
 
         else:
-            output = enc_hidden_states.to(encoder_input.dtype)
+            output = enc_hidden_states.to(input_embeddings.dtype)
 
         # output_enc_hidden refers to when we just need the encoder's
         # output. For example, it is helpful to compute

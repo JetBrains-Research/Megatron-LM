@@ -10,8 +10,29 @@ from torch.utils.data import Dataset
 from megatron import get_args
 from megatron.core import mpu
 from torch.utils.data.dataloader import default_collate
+from einops import rearrange
 
 import pydevd_pycharm
+
+def merge_batch(batch):
+    collated_dict = {}
+    for data_dict in batch:
+        for key, value in data_dict.items():
+            if isinstance(value, int):
+                tensor_value = torch.tensor(value)
+            else:
+                tensor_value = torch.from_numpy(value)
+            if key in collated_dict:
+                collated_dict[key].append(tensor_value)
+            else:
+                collated_dict[key] = [tensor_value]
+    for key, value in collated_dict.items():
+        if key == "docs_enc" or key == "enc_mask":
+            collated_dict[key] = torch.concat(value, dim=0)
+        else:
+            collated_dict[key] = torch.stack(value)
+
+    return collated_dict
 
 def collate_fn(batch, max_sent_len):
 
@@ -19,12 +40,13 @@ def collate_fn(batch, max_sent_len):
     max_num_sent = max([item['sent_nums'] for item in batch])
     batch_processed = []
     for item in batch:
-        item["docs_enc"] = item["docs_enc"][:max_num_sent*max_sent_len]
+        item["docs_enc"] = item["docs_enc"][:item['sent_nums']*max_sent_len]
+        item["docs_enc"] = rearrange(item["docs_enc"], "(s t) -> s t", t=max_sent_len)
+        item["enc_mask"] = item["enc_mask"][:item['sent_nums']]
         item["enc_dec_mask"] = item["enc_dec_mask"][:, :max_num_sent]
-        item["enc_mask"] = item["enc_mask"][:max_num_sent]
         item["sent_mask"] = item["sent_mask"][:max_num_sent, :max_num_sent]
         batch_processed.append(item)
-    batch_processed = default_collate(batch_processed)
+    batch_processed = merge_batch(batch_processed)
     return batch_processed
 
 def build_pretraining_data_loader(dataset, consumed_samples, cyclic=False):
