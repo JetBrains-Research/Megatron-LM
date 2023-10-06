@@ -9,7 +9,25 @@ import numpy as np
 from torch.utils.data import Dataset
 from megatron import get_args
 from megatron.core import mpu
+from torch.utils.data.dataloader import default_collate
 
+import pydevd_pycharm
+
+def collate_fn(batch):
+
+    # TODO replace 18 by value from config
+    # TODO add collate ONLY for codeformer
+    # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
+    max_num_sent = max([item['sent_nums'] for item in batch])
+    batch_processed = []
+    for item in batch:
+        item["docs_enc"] = item["docs_enc"][:max_num_sent*18]
+        item["enc_dec_mask"] = item["enc_dec_mask"][:, :max_num_sent]
+        item["enc_mask"] = item["enc_mask"][:max_num_sent]
+        item["sent_mask"] = item["sent_mask"][:max_num_sent, :max_num_sent]
+        batch_processed.append(item)
+    batch_processed = default_collate(batch_processed)
+    return batch_processed
 
 def build_pretraining_data_loader(dataset, consumed_samples, cyclic=False):
     """Buld dataloader given an input dataset."""
@@ -43,7 +61,8 @@ def build_pretraining_data_loader(dataset, consumed_samples, cyclic=False):
     return torch.utils.data.DataLoader(dataset,
                                        batch_sampler=batch_sampler,
                                        num_workers=args.num_workers,
-                                       pin_memory=True)
+                                       pin_memory=True,
+                                       collate_fn=collate_fn)
 
 class MegatronPretrainingSampler:
 

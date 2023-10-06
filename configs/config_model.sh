@@ -10,8 +10,8 @@ MODEL_ARGS="
     --position-embedding-type rope\
     --kv-channels 64 \
     --ffn-hidden-size 2048 \
-    --micro-batch-size 12 \
-    --global-batch-size 12 \
+    --micro-batch-size 24 \
+    --global-batch-size 24 \
     --lr 0.0001 \
     --min-lr 0.00001 \
     --weight-decay 1e-2 \
@@ -25,7 +25,7 @@ MODEL_ARGS="
 # Note, that finally label would be (max-label-length+2) due to BOS and EOS tokens.
 DATA_PROC_ARGS="
 --max-context-length 4096 \
---max-sent-num 128 \
+--max-sent-num 384 \
 --max-label-length 5 \
 --max-sent-length 16 \
 --language java

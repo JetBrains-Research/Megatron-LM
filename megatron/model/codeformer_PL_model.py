@@ -523,6 +523,8 @@ class СodeformerLanguageModel(MegatronModule):
         # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
         # Encoder embedding.
         b = enc_input_ids.size(0)
+        max_sent_num_batch = sent_mask.size(2)
+        pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
         enc_input_ids = rearrange(enc_input_ids, "b (s t) -> (b s) t", t=self.max_sent_length)
         enc_mask = rearrange(enc_mask, "b 1 s ... -> (b s) 1 ...")
 
@@ -541,11 +543,11 @@ class СodeformerLanguageModel(MegatronModule):
                 # TODO FINAL may be for inference something should be changed
                 # rotary_pos_emb = self.rotary_pos_emb(inference_params.max_sequence_length)
                 rotary_pos_emb_1 = self.rotary_pos_emb_1(self.max_sent_length)
-                rotary_pos_emb_2 = self.rotary_pos_emb_2(self.max_sent_num)
-                rotary_pos_emb_dec = self.rotary_pos_emb_dec(self.max_sent_num)
+                rotary_pos_emb_2 = self.rotary_pos_emb_2(max_sent_num_batch)
+                rotary_pos_emb_dec = self.rotary_pos_emb_dec(self.max_label_length)
             else:
                 rotary_pos_emb_1 = self.rotary_pos_emb_1(self.max_sent_length)
-                rotary_pos_emb_2 = self.rotary_pos_emb_2(self.max_sent_num)
+                rotary_pos_emb_2 = self.rotary_pos_emb_2(max_sent_num_batch)
                 rotary_pos_emb_dec = self.rotary_pos_emb_dec(self.max_label_length)
     
     # dec_mask,
