@@ -524,7 +524,7 @@ class СodeformerLanguageModel(MegatronModule):
         # Encoder embedding.
         b = enc_input_ids.size(0)
         max_sent_num_batch = sent_mask.size(2)
-        pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
+        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
         enc_input_ids = rearrange(enc_input_ids, "b (s t) -> (b s) t", t=self.max_sent_length)
         enc_mask = rearrange(enc_mask, "b 1 s ... -> (b s) 1 ...")
 

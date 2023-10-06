@@ -6,6 +6,7 @@ from datetime import datetime
 import math
 import sys
 import time
+from tqdm import tqdm
 
 # The earliest we can measure the start time.
 _TRAIN_START_TIME = time.time()
@@ -712,6 +713,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
     timers('interval-time', log_level=0).start(barrier=True)
     print_datetime('before the start of training step')
     report_memory_flag = True
+    pbar = tqdm(total=args.train_iters)
     while iteration < args.train_iters: #args.train_iters = args.train_samples // args.global_batch_size
         if args.profile and \
            iteration == args.profile_step_start and \
@@ -729,6 +731,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
                        opt_param_scheduler,
                        config)
         iteration += 1
+        pbar.update(1)
         args.consumed_train_samples += mpu.get_data_parallel_world_size() * \
                                        args.micro_batch_size * \
                                        get_num_microbatches()
@@ -810,7 +813,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
            iteration == args.profile_step_end and \
            torch.distributed.get_rank() in args.profile_ranks:
             torch.cuda.cudart().cudaProfilerStop()
-
+    pbar.close()
     return iteration, run_id
 
 

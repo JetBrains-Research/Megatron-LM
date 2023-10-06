@@ -13,15 +13,13 @@ from torch.utils.data.dataloader import default_collate
 
 import pydevd_pycharm
 
-def collate_fn(batch):
+def collate_fn(batch, max_sent_len):
 
-    # TODO replace 18 by value from config
-    # TODO add collate ONLY for codeformer
     # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
     max_num_sent = max([item['sent_nums'] for item in batch])
     batch_processed = []
     for item in batch:
-        item["docs_enc"] = item["docs_enc"][:max_num_sent*18]
+        item["docs_enc"] = item["docs_enc"][:max_num_sent*max_sent_len]
         item["enc_dec_mask"] = item["enc_dec_mask"][:, :max_num_sent]
         item["enc_mask"] = item["enc_mask"][:max_num_sent]
         item["sent_mask"] = item["sent_mask"][:max_num_sent, :max_num_sent]
@@ -58,11 +56,15 @@ def build_pretraining_data_loader(dataset, consumed_samples, cyclic=False):
                 args.dataloader_type))
 
     # Torch dataloader.
+    if args.codeformer:
+        coll_fn = lambda batch: collate_fn(batch, max_sent_len=args.max_sent_length+2)
+    else:
+        coll_fn = None
     return torch.utils.data.DataLoader(dataset,
                                        batch_sampler=batch_sampler,
                                        num_workers=args.num_workers,
                                        pin_memory=True,
-                                       collate_fn=collate_fn)
+                                       collate_fn=coll_fn)
 
 class MegatronPretrainingSampler:
 
