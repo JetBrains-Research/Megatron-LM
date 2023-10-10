@@ -141,9 +141,11 @@ class Partition(object):
         with open(output_json_path, "w") as json_file:
             json.dump(line_count_dict, json_file)
 
-    def process_json_file(self, file_name, output_prefix):
+    def process_json_file(self, file_name, output_prefix, processed_folder=""):
         # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
         input_file_name, output_prefix = file_name, output_prefix[:-6]
+        output_folder, output_name = os.path.split(output_prefix)
+        output_prefix = os.path.join(output_folder, processed_folder, output_name)
         print("Opening", input_file_name)
         fin = open(input_file_name, "r", encoding="utf-8")
 
@@ -197,7 +199,9 @@ class Partition(object):
 def get_args():
     parser = argparse.ArgumentParser()
     group = parser.add_argument_group(title="input data")
-    group.add_argument("--input", type=str, required=True, help="Path to input JSON")
+    group.add_argument("--input", nargs="+", type=str, required=True, help="Path to input JSON")
+    group.add_argument("--separate-split-files", action="store_true", help="If train/val/test splits are in separate files")
+    group.add_argument("--processed-folder", type=str, default="", help="Path to tokenized data")
     group.add_argument(
         "--json-keys", nargs="+", default=["text"], help="space separate listed of keys to extract from json"
     )
@@ -289,9 +293,17 @@ def check_files_exist(in_ss_out_names, key, num_partitions):
 
 def main():
     args = get_args()
-
+    processed_folder = args.processed_folder
+    # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
     in_ss_out_names = []
-    if args.partitions == 1:  # Number of files in partition
+    if args.separate_split_files:
+        for file in args.input:
+            file_names = {
+                "partition": file,
+                "output_prefix": args.output_prefix,
+            }
+            in_ss_out_names.append(file_names)
+    elif args.partitions == 1:  # Number of files in partition
         file_name, extension = os.path.splitext(args.input)
         sentence_split_file = file_name + "_ss" + extension
         file_names = {
@@ -363,7 +375,7 @@ def main():
     processes = []
     # input_key = "sentence_split" if args.split_sentences else "partition"
     for name in in_ss_out_names:
-        p = multiprocessing.Process(target=partition.process_json_file, args=((name["partition"], name["partition"])))
+        p = multiprocessing.Process(target=partition.process_json_file, args=((name["partition"], name["partition"], processed_folder)))
         p.start()
         processes.append(p)
 
