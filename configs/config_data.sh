@@ -1,10 +1,10 @@
 DATA_ARGS="
     --split 800,100,100 \
     --train-samples 3000 \
-    --eval-interval-samples 100 \
+    --eval-interval-samples 1000 \
     --eval-iters-samples 100 \
 "
-#    --val-samples-per-run 100\
+
 OUTPUT_ARGS="
     --log-interval 100 \
     --save-interval-samples 30000 \

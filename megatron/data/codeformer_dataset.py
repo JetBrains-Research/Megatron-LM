@@ -7,6 +7,7 @@ import torch
 import os
 
 from megatron import get_tokenizer
+from megatron import get_args
 from megatron.data.dataset_utils import get_train_valid_test_split_
 
 import pydevd_pycharm
@@ -53,12 +54,14 @@ class CodeformerDataset(torch.utils.data.Dataset):
 
         # Vocab stuff.
         tokenizer = get_tokenizer()
+        args = get_args()
         self.vocab_id_list = list(tokenizer.inv_vocab.keys())
         self.vocab_id_to_token_dict = tokenizer.inv_vocab
         self.cls_id = tokenizer.cls
         self.sep_id = tokenizer.sep
         self.mask_id = tokenizer.mask
         self.pad_id = tokenizer.pad
+        args.pad_id = self.pad_id
         self.bos_id = tokenizer.bos_token_id
         self.eos_id = tokenizer.eos_token_id
         self.sentinel_tokens = tokenizer.additional_special_tokens_ids
@@ -106,13 +109,11 @@ def build_training_sample(
     eos_id=None,
 ):
     """Build training sample.
-    ## TODO FINAL rewrite doc
 
     Arguments:
         sample: A list of sentences in which each sentence is a list token ids.
-        target_seq_length: Desired sequence length.
-        max_seq_length: Maximum length of the sequence. All values are padded to
-            this length.
+        label: Method labels - a list token ids.
+        max_sent_num: Maximum number of subtrees in the method.
         cls_id: Start of example id.
         sep_id: Separator id.
         mask_id: Mask token id.
@@ -126,7 +127,7 @@ def build_training_sample(
     sample = sample[:max_sent_num]
     num_sent = len(sample)
     # Padding.
-    sample = sample + (max_sent_num - num_sent) * [0 * sample[0]]
+    # sample = sample + (max_sent_num - num_sent) * [0 * sample[0]]
     flattened_sample = np.concatenate(sample, axis=0, dtype=np.int64)
     # label is already padded
     label = np.array(label, dtype=np.int64)
@@ -136,10 +137,7 @@ def build_training_sample(
     enc_mask = [make_attention_mask(sentence, sentence, pad_id) for sentence in sample]
     dec_mask = make_attention_mask(label, label, pad_id)
     dec_mask = dec_mask * make_history_mask(label)
-    ## Mask for the second encoder
-    sent_flags = np.array(num_sent * [1] + (max_sent_num - num_sent) * [pad_id], dtype=np.int64)
-    enc_dec_mask = make_attention_mask(label, sent_flags, pad_id)
-    sent_mask = make_attention_mask(sent_flags, sent_flags, pad_id)
+    ## Mask for the second encoder is build in collate_fn in data_sampler
 
     train_sample = {
         "docs_enc": flattened_sample,
@@ -148,8 +146,6 @@ def build_training_sample(
         "loss_mask": loss_mask,
         "enc_mask": np.stack(enc_mask).astype(np.int64),
         "dec_mask": np.stack(dec_mask).astype(np.int64),
-        "enc_dec_mask": enc_dec_mask,
-        "sent_mask": sent_mask,
     }
 
     return train_sample

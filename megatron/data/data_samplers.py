@@ -9,6 +9,7 @@ import numpy as np
 from torch.utils.data import Dataset
 from megatron import get_args
 from megatron.core import mpu
+from megatron.data.codeformer_dataset import make_attention_mask
 from torch.utils.data.dataloader import default_collate
 from einops import rearrange
 
@@ -34,37 +35,36 @@ def merge_batch(batch):
 
     return collated_dict
 
-def collate_fn(batch, max_sent_len):
+def collate_fn(batch, max_sent_len, pad_id=0):
 
     # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
     max_num_sent = max([item['sent_nums'] for item in batch])
     batch_processed = []
     for item in batch:
-        item["docs_enc"] = item["docs_enc"][:item['sent_nums']*max_sent_len]
         item["docs_enc"] = rearrange(item["docs_enc"], "(s t) -> s t", t=max_sent_len)
-        item["enc_mask"] = item["enc_mask"][:item['sent_nums']]
-        item["enc_dec_mask"] = item["enc_dec_mask"][:, :max_num_sent]
-        item["sent_mask"] = item["sent_mask"][:max_num_sent, :max_num_sent]
+        # building masks
+        sent_flags = np.array(item['sent_nums'] * [1] + (max_num_sent - item['sent_nums']) * [pad_id], dtype=np.int64)
+        item["enc_dec_mask"] = make_attention_mask(item['labels'], sent_flags, pad_id)
+        item["sent_mask"] = make_attention_mask(sent_flags, sent_flags, pad_id)
         batch_processed.append(item)
     batch_processed = merge_batch(batch_processed)
     return batch_processed
 
-def build_pretraining_data_loader(dataset, consumed_samples, cyclic=False):
+def build_pretraining_data_loader(dataset, consumed_samples):
     """Buld dataloader given an input dataset."""
 
     if dataset is None:
         return None
     args = get_args()
-
     # Megatron sampler
-    if args.dataloader_type == 'single':# and not cyclic:
+    if args.dataloader_type == 'single':
         batch_sampler = MegatronPretrainingSampler(
             total_samples=len(dataset),
             consumed_samples=consumed_samples,
             micro_batch_size=args.micro_batch_size,
             data_parallel_rank=mpu.get_data_parallel_rank(),
             data_parallel_size=mpu.get_data_parallel_world_size())
-    elif args.dataloader_type == 'cyclic':# or cyclic:
+    elif args.dataloader_type == 'cyclic':
         batch_sampler = MegatronPretrainingRandomSampler(
             dataset,
             total_samples=len(dataset),
@@ -79,7 +79,7 @@ def build_pretraining_data_loader(dataset, consumed_samples, cyclic=False):
 
     # Torch dataloader.
     if args.codeformer:
-        coll_fn = lambda batch: collate_fn(batch, max_sent_len=args.max_sent_length+2)
+        coll_fn = lambda batch: collate_fn(batch, max_sent_len=args.max_sent_length+2, pad_id=args.pad_id)
     else:
         coll_fn = None
     return torch.utils.data.DataLoader(dataset,

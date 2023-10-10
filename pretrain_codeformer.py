@@ -20,13 +20,19 @@ import pydevd_pycharm
 # import pydevd_pycharm
 # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
 
-# TODO FINAL Change description
 """
-Pipeline parallelism for T5
+Pipeline parallelism for СodeFormer
+Build on the base of T5 model.
 ===========================
 
-T5 is a model architecture with both encoder and decoder blocks.
-Consequently, pipeline parallelism is implemented slightly differently
+СodeFormer represents hierarchial transformer, consisting of two consequent
+encoders, divided by linear layer, and a decoder as a last block.
+
+Model parallelism is not implemented here, it needs additional work.
+
+Below is a text about model parallelism in T5 model 
+
+Pipeline parallelism is implemented slightly differently
 compared to architectures like GPT and BERT.
 
 In particular, when pipeline_model_parallel_world_size > 1, each stage

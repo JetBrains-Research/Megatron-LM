@@ -11,7 +11,7 @@ MODEL_ARGS="
     --kv-channels 64 \
     --ffn-hidden-size 2048 \
     --micro-batch-size 24 \
-    --global-batch-size 24 \
+    --global-batch-size 96 \
     --lr 0.0001 \
     --min-lr 0.00001 \
     --weight-decay 1e-2 \
@@ -21,7 +21,6 @@ MODEL_ARGS="
     --vocab-extra-ids 100
 "
 #     --epochs 2 \
-# TODO FINAL May be rename sent -> subtree
 # Note, that finally label would be (max-label-length+2) due to BOS and EOS tokens.
 DATA_PROC_ARGS="
 --max-context-length 4096 \

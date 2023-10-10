@@ -26,7 +26,6 @@ DISTRIBUTED_ARGS="
 
 DATA_PATHS="
     --data-path $DATA_PROCESSED_PATH \
-    --tree-sitter-path $TREE_SITTER_PATH \
     --vocab-file $VOCAB_FILE \
     --tensorboard-dir $LOGGING_PATH \
 "
@@ -34,7 +33,7 @@ DATA_PATHS="
 export WANDB_DISABLE_GIT=true
 export WANDB_BASE_URL="https://jetbrains.wandb.io"
 
-export CUDA_VISIBLE_DEVICES=2,4,5,6
+export CUDA_VISIBLE_DEVICES=0,1,3,7
 
 torchrun $DISTRIBUTED_ARGS pretrain_codeformer.py \
     --codeformer\

@@ -1,10 +1,12 @@
 source /workspace/megatron/configs/config_local_path.sh
 source /workspace/megatron/configs/config_model.sh
+source /workspace/megatron/configs/config_data.sh
 
 python "${MEGATRON_PATH}tools/preprocess_data_codeformer.py" \
-       --input ${DATA_FILE_PATH} \
+       --input $DATA_FILE_PATH \
        --output-prefix "${DATA_PATH}dev" \
-       --vocab-file ${VOCAB_FILE} \
+       --vocab-file $VOCAB_FILE \
+       --tree-sitter-path $TREE_SITTER_PATH \
        --tokenizer-type HFTokenizer \
        --tokenizer-model "Salesforce/codet5p-220m"\
        --workers 8\

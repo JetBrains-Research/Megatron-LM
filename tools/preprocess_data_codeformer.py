@@ -18,13 +18,6 @@ from codeformer_utils.vendor.codeformer import AstCodeSplitter
 
 import pydevd_pycharm
 
-try:
-    import nltk
-
-    nltk_available = True
-except ImportError:
-    nltk_available = False
-
 from megatron.tokenizer import build_tokenizer
 from megatron.data import indexed_dataset
 
@@ -39,17 +32,17 @@ except Exception as e:
 
 
 # https://stackoverflow.com/questions/33139531/preserve-empty-lines-with-nltks-punkt-tokenizer
-class CustomLanguageVars(nltk.tokenize.punkt.PunktLanguageVars):
-
-    _period_context_fmt = r"""
-        \S*                          # some word material
-        %(SentEndChars)s             # a potential sentence ending
-        \s*                       #  <-- THIS is what I changed
-        (?=(?P<after_tok>
-            %(NonWord)s              # either other punctuation
-            |
-            (?P<next_tok>\S+)     #  <-- Normally you would have \s+ here
-        ))"""
+# class CustomLanguageVars(nltk.tokenize.punkt.PunktLanguageVars):
+#
+#     _period_context_fmt = r"""
+#         \S*                          # some word material
+#         %(SentEndChars)s             # a potential sentence ending
+#         \s*                       #  <-- THIS is what I changed
+#         (?=(?P<after_tok>
+#             %(NonWord)s              # either other punctuation
+#             |
+#             (?P<next_tok>\S+)     #  <-- Normally you would have \s+ here
+#         ))"""
 
 
 class IdentitySplitter(object):
@@ -65,7 +58,6 @@ class Encoder(object):
         # Use Encoder class as a container for global data
         Encoder.tokenizer = build_tokenizer(self.args)
         # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
-        # TODO DISCUSS what is max_code_parts?
         config = {
             "programming_language": self.args.language,
             "path_to_tree_sitter": f"{self.args.tree_sitter_path}/tree-sitter-{self.args.language}",
@@ -244,6 +236,7 @@ def get_args():
     group.add_argument("--max-sent-num", type=int, default=None, help="Max number of trees in doc (method).")
     group.add_argument("--max-sent-length", type=int, default=None, help="Max len of subsequence tree.")
     group.add_argument("--max-label-length", type=int, default=None, help="Max len of label (method name).")
+    group.add_argument("--max-context-length", type=int, default=None, help="Max size of the method.")
 
     group = parser.add_argument_group(title="runtime")
     group.add_argument(
@@ -296,12 +289,6 @@ def check_files_exist(in_ss_out_names, key, num_partitions):
 
 def main():
     args = get_args()
-
-    # if args.split_sentences:
-    #     if nltk_available:
-    #         nltk.download("punkt", quiet=True)
-    #     else:
-    #         raise Exception("nltk library required for sentence splitting is not available.")
 
     in_ss_out_names = []
     if args.partitions == 1:  # Number of files in partition

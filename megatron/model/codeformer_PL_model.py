@@ -473,7 +473,7 @@ class СodeformerLanguageModel(MegatronModule):
 
         # This is usually handled in schedules.py but some inference code still
         # gives us non-lists or None
-        # TODO input_tensor is always None. When does it change?
+        # TODO input_tensor is always None. When does it change? Model parallelism?
         if not isinstance(input_tensor, list):
             input_tensor = [input_tensor]
             # if input_tensor is not None:
