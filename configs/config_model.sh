@@ -10,8 +10,8 @@ MODEL_ARGS="
     --position-embedding-type rope\
     --kv-channels 64 \
     --ffn-hidden-size 2048 \
-    --micro-batch-size 24 \
-    --global-batch-size 96 \
+    --micro-batch-size 48 \
+    --global-batch-size 192 \
     --lr 0.0001 \
     --min-lr 0.00001 \
     --weight-decay 1e-2 \
@@ -27,10 +27,7 @@ DATA_PROC_ARGS="
 --max-sent-num 384 \
 --max-label-length 5 \
 --max-sent-length 16 \
---language java
+--language java \
+--separate-split-files \
 "
-
-#    --train-iters 500 \
-#    --lr-decay-iters 1000000 \
-#    --lr-decay-style linear \
-#    --seq-length 128
+# --separate-split-files

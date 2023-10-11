@@ -6,7 +6,7 @@ source /workspace/megatron/configs/config_data.sh
 
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 # export PATH=/workspace/megatron
-DATA_PROCESSED_PATH="${DATA_PATH}train_code_sentence" # .._text_sentence
+DATA_PROCESSED_PATH="${DATA_PATH}/processed/train_code_sentence" # .._text_sentence
 
 GPUS_PER_NODE=4
 # Change for multinode config
@@ -33,7 +33,7 @@ DATA_PATHS="
 export WANDB_DISABLE_GIT=true
 export WANDB_BASE_URL="https://jetbrains.wandb.io"
 
-export CUDA_VISIBLE_DEVICES=0,1,3,7
+export CUDA_VISIBLE_DEVICES=4,5,6,7
 
 torchrun $DISTRIBUTED_ARGS pretrain_codeformer.py \
     --codeformer\

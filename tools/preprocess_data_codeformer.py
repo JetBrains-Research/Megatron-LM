@@ -15,6 +15,7 @@ import torch
 import numpy as np
 import multiprocessing
 from codeformer_utils.vendor.codeformer import AstCodeSplitter
+import concurrent.futures
 
 import pydevd_pycharm
 
@@ -134,18 +135,17 @@ class Partition(object):
         fin.close()
         fout.close()
 
-    def save_data_size(self, input_filepath, output_filename, total_docs_processed):
-        input_folder = os.path.dirname(input_filepath)
-        output_json_path = os.path.join(input_folder, output_filename)
-        line_count_dict = {"total_docs": total_docs_processed}
-        with open(output_json_path, "w") as json_file:
+    def save_data_size(self, output_json_path, prefix, total_docs_processed):
+        line_count_dict = {prefix: total_docs_processed}
+        with open(output_json_path, "a") as json_file:
             json.dump(line_count_dict, json_file)
+            json_file.write("\n")
 
-    def process_json_file(self, file_name, output_prefix, processed_folder=""):
+    def process_json_file(self, file_name, output_prefix, processed_folder, output_json_path):
         # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
         input_file_name, output_prefix = file_name, output_prefix[:-6]
-        output_folder, output_name = os.path.split(output_prefix)
-        output_prefix = os.path.join(output_folder, processed_folder, output_name)
+        _, output_name = os.path.split(output_prefix)
+        output_prefix = os.path.join(processed_folder, output_name)
         print("Opening", input_file_name)
         fin = open(input_file_name, "r", encoding="utf-8")
 
@@ -190,8 +190,8 @@ class Partition(object):
 
         fin.close()
         print(f'Number of tree errors = {total_errors}')
-        print(f'Final number of docs = {total_docs_processed}')
-        self.save_data_size(input_file_name, "dataset_size.json", total_docs_processed)
+        print(f'Final number of docs in {output_name} = {total_docs_processed}')
+        self.save_data_size(output_json_path, output_name, total_docs_processed)
         for key in self.args.json_keys:
             builders[key].finalize(output_idx_files[key])
 
@@ -202,6 +202,7 @@ def get_args():
     group.add_argument("--input", nargs="+", type=str, required=True, help="Path to input JSON")
     group.add_argument("--separate-split-files", action="store_true", help="If train/val/test splits are in separate files")
     group.add_argument("--processed-folder", type=str, default="", help="Path to tokenized data")
+    group.add_argument("--dataset-size-file", type=str, default="dataset_size.json", help="Path to tokenized data")
     group.add_argument(
         "--json-keys", nargs="+", default=["text"], help="space separate listed of keys to extract from json"
     )
@@ -290,10 +291,20 @@ def check_files_exist(in_ss_out_names, key, num_partitions):
             return False
     return True
 
+def combine_jsonl_dicts(output_json_path):
+
+    combined_data = {}
+    with open(output_json_path, "r") as input_file:
+        for line in input_file:
+            data = json.loads(line)
+            combined_data.update(data)
+    with open(output_json_path, "w") as output_file:
+        output_file.write(json.dumps(combined_data))
 
 def main():
     args = get_args()
     processed_folder = args.processed_folder
+    dataset_size_file = args.dataset_size_file
     # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
     in_ss_out_names = []
     if args.separate_split_files:
@@ -374,14 +385,19 @@ def main():
     # encode partition files in parallel
     processes = []
     # input_key = "sentence_split" if args.split_sentences else "partition"
+    output_json_path = os.path.join(processed_folder, dataset_size_file)
+    if os.path.exists(output_json_path):
+        os.remove(output_json_path)
+
     for name in in_ss_out_names:
-        p = multiprocessing.Process(target=partition.process_json_file, args=((name["partition"], name["partition"], processed_folder)))
+        p = multiprocessing.Process(target=partition.process_json_file, args=((name["partition"], name["partition"], processed_folder, output_json_path)))
         p.start()
         processes.append(p)
 
     for p in processes:
         p.join()
 
+    combine_jsonl_dicts(output_json_path)
     if args.partitions == 1:
         return
 
@@ -408,7 +424,6 @@ def main():
             full_partition_output_prefix = "{}_{}_{}".format(parition_output_prefix, key, level)
             builders[key].merge_file_(full_partition_output_prefix)
         builders[key].finalize(output_idx_files[key])
-
 
 if __name__ == "__main__":
 

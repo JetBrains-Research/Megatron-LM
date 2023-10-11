@@ -6,6 +6,8 @@ docker run --gpus all -it --rm \
 -v $BASH_HISTORY_PATH:/root/.bash_history \
 -v $MEGATRON_PATH:/workspace/megatron \
 -v $DATA_PATH:/workspace/dataset \
+-v $DATA_INPUT_PATH:/workspace/dataset_input \
+-v $DATA_INPUT2_PATH:/workspace/dataset_input2 \
 -v $CHECKPOINTS_PATH:/workspace/checkpoints \
 -v $MODEL_PATH:/workspace/model_setup/ \
 -v $LOGGING_PATH:/workspace/logging/ \

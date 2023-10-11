@@ -565,22 +565,23 @@ def _build_train_valid_test_datasets(
     label_prefix = None,
 ):
 
+    args = get_args()
     # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
-    # Indexed dataset.
-    indexed_dataset = get_indexed_dataset_(data_prefix, dataset_type, skip_warmup)
-    if label_prefix is not None:
-        indexed_labels = get_indexed_dataset_(label_prefix, dataset_type, skip_warmup)
-    else:
-        indexed_labels = None
+    # if label_prefix is not None:
+    #     indexed_labels = get_indexed_dataset_(label_prefix, dataset_type, skip_warmup)
+    # else:
+    #     indexed_labels = None
 
 # Get start and end indices of train/valid/train into doc-idx
     # Note that doc-idx is desinged to be num-docs + 1 so we can
     # easily iterate over it.
-    total_num_of_documents = indexed_dataset.doc_idx.shape[0] - 1
-    splits = get_train_valid_test_split_(splits_string, total_num_of_documents)
-
-    # Print stats about the splits.
-    print_rank_0(" > dataset split:")
+    # Indexed dataset.
+    if not args.separate_split_files:
+        indexed_dataset = get_indexed_dataset_(data_prefix, dataset_type, skip_warmup)
+        total_num_of_documents = indexed_dataset.doc_idx.shape[0] - 1
+        splits = get_train_valid_test_split_(splits_string, total_num_of_documents)
+        # Print stats about the splits.
+        print_rank_0(" > dataset split:")
 
     def print_split_stats(name, index):
         print_rank_0("    {}:".format(name))
@@ -595,40 +596,56 @@ def _build_train_valid_test_datasets(
             "sentences".format(start_index, end_index, end_index - start_index)
         )
 
-    print_split_stats("train", 0)
-    print_split_stats("validation", 1)
-    print_split_stats("test", 2)
+    if not args.separate_split_files:
+        print_split_stats("train", 0)
+        print_split_stats("validation", 1)
+        print_split_stats("test", 2)
 
-    def build_split_dataset(index, name):
+    def build_split_dataset(index, data_prefix, name):
         dataset = None
-        if splits[index + 1] > splits[index]:
-            # Get the pointer to the original doc-idx so we can set it later.
-            doc_idx_ptr = indexed_dataset.get_doc_idx()
-            # Slice the doc-idx
-            start_index = splits[index]
-            # Add +1 so we can index into the dataset to get the upper bound.
-            end_index = splits[index + 1] + 1
-            # New doc_idx view.
-            indexed_dataset.set_doc_idx(doc_idx_ptr[start_index:end_index])
-            if indexed_labels is not None:
-                label_idx_ptr = indexed_labels.get_doc_idx()
-                indexed_labels.set_doc_idx(label_idx_ptr[start_index:end_index])
+        if not args.separate_split_files:
+            if splits[index + 1] > splits[index] and not args.separate_split_files:
+                # Get the pointer to the original doc-idx so we can set it later.
+                doc_idx_ptr = indexed_dataset.get_doc_idx()
+                # Slice the doc-idx
+                start_index = splits[index]
+                # Add +1 so we can index into the dataset to get the upper bound.
+                end_index = splits[index + 1] + 1
+                # New doc_idx view.
+                indexed_dataset.set_doc_idx(doc_idx_ptr[start_index:end_index])
+                if indexed_labels is not None:
+                    label_idx_ptr = indexed_labels.get_doc_idx()
+                    indexed_labels.set_doc_idx(label_idx_ptr[start_index:end_index])
+        else:
+            directory, filename = os.path.split(data_prefix)
+            if name == 'val':
+                filename = filename.replace('train', 'val')
+            elif name == 'test':
+                filename = filename.replace("train", "test")
+            data_prefix = os.path.join(directory, filename)
+            label_prefix = os.path.join(directory, filename.replace("code", "label"))
+            indexed_dataset = None
+            indexed_labels = None
 
-            dataset = build_dataset(
-                name,
-                data_prefix,
-                train_valid_test_num_samples[index],
-                max_seq_length,
-                seed,
-                skip_warmup,
-                binary_head,
-                max_seq_length_dec,
-                dataset_type,
-                indexed_dataset,
-                indexed_labels,
-            )
+        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
 
-            # Set the original pointer so dataset remains the main dataset.
+        dataset = build_dataset(
+            name,
+            data_prefix,
+            label_prefix,
+            train_valid_test_num_samples[index],
+            max_seq_length,
+            seed,
+            skip_warmup,
+            binary_head,
+            max_seq_length_dec,
+            dataset_type,
+            indexed_dataset,
+            indexed_labels,
+        )
+
+        # Set the original pointer so dataset remains the main dataset.
+        if not args.separate_split_files:
             indexed_dataset.set_doc_idx(doc_idx_ptr)
             # Checks.
             assert indexed_dataset.doc_idx[0] == 0
@@ -640,9 +657,9 @@ def _build_train_valid_test_datasets(
 
         return dataset
 
-    train_dataset = build_split_dataset(0, "train")
-    valid_dataset = build_split_dataset(1, "valid")
-    test_dataset = build_split_dataset(2, "test")
+    train_dataset = build_split_dataset(0, data_prefix, "train")
+    valid_dataset = build_split_dataset(1, data_prefix, "val")
+    test_dataset = build_split_dataset(2, data_prefix, "test")
 
     return (train_dataset, valid_dataset, test_dataset)
 
@@ -650,6 +667,7 @@ def _build_train_valid_test_datasets(
 def build_dataset(
     name,
     data_prefix,
+    label_prefix,
     max_num_samples,
     max_seq_length,
     seed,
@@ -659,7 +677,6 @@ def build_dataset(
     dataset_type="standard_bert",
     indexed_dataset=None,
     indexed_labels=None,
-    label_prefix = None,
 ):
 
     from megatron.data.bert_dataset import BertDataset
@@ -708,12 +725,12 @@ def build_dataset(
     elif dataset_type == DSET_TYPE_CF:
         args = get_args()
 
-        if (indexed_labels is None) and (indexed_dataset is None):
+        if indexed_labels is None:
             indexed_labels = get_indexed_dataset_(label_prefix, dataset_type, skip_warmup)
-        elif (indexed_labels is not None) and (indexed_dataset is not None):
-            pass
-        else:
-            print('Both data and labels should be given or absent')
+        # elif (indexed_labels is not None) and (indexed_dataset is not None):
+        #     pass
+        # else:
+        #     print('Both data and labels should be given or absent')
         dataset = CodeformerDataset(
             indexed_dataset=indexed_dataset,
             indexed_labels=indexed_labels,
@@ -756,42 +773,25 @@ def get_indexed_dataset_(data_prefix, dataset_type, skip_warmup):
 
     start_time = time.time()
     multimodal = dataset_type == DSET_TYPE_MULTIMODAL
+    directory, filename = os.path.split(data_prefix)
+    name = ''
+    if 'train' in filename:
+        name = 'TRAIN '
+    elif 'val' in filename:
+        name = 'VAL '
+    elif 'test' in filename:
+        name = 'TEST '
+
     indexed_dataset = MMapIndexedDataset(data_prefix, skip_warmup, multimodal)
     assert indexed_dataset.sizes.shape[0] == indexed_dataset.doc_idx[-1]
-    print_rank_0(" > finished creating indexed dataset in {:4f} " "seconds".format(time.time() - start_time))
+    if 'label' not in filename:
+        print_rank_0(" > finished creating indexed dataset in {:4f} " "seconds".format(time.time() - start_time))
 
-    print_rank_0(" > indexed dataset stats:")
-    print_rank_0("    number of documents: {}".format(indexed_dataset.doc_idx.shape[0] - 1))
-    print_rank_0("    number of sentences: {}".format(indexed_dataset.sizes.shape[0]))
+        print_rank_0(f" > indexed {name}dataset stats:")
+        print_rank_0("    number of documents: {}".format(indexed_dataset.doc_idx.shape[0] - 1))
+        print_rank_0("    number of sentences: {}".format(indexed_dataset.sizes.shape[0]))
 
     return indexed_dataset
-
-
-# def get_train_valid_test_split_(splits_string, size):
-#     """Get dataset splits from comma or '/' separated string list."""
-#
-#     splits = []
-#     if splits_string.find(",") != -1:
-#         splits = [float(s) for s in splits_string.split(",")]
-#     elif splits_string.find("/") != -1:
-#         splits = [float(s) for s in splits_string.split("/")]
-#     else:
-#         splits = [float(splits_string)]
-#     while len(splits) < 3:
-#         splits.append(0.0)
-#     splits = splits[:3]
-#     splits_sum = sum(splits)
-#     assert splits_sum > 0.0
-#     splits = [split / splits_sum for split in splits]
-#     splits_index = [0]
-#     for index, split in enumerate(splits):
-#         splits_index.append(splits_index[index] + int(round(split * float(size))))
-#     diff = splits_index[-1] - size
-#     for index in range(1, len(splits_index)):
-#         splits_index[index] -= diff
-#     assert len(splits_index) == 4
-#     assert splits_index[-1] == size
-#     return splits_index
 
 def get_train_valid_test_split_(splits_string, size):
     """Get dataset splits from comma or '/' separated string list."""

@@ -969,12 +969,12 @@ def build_train_valid_test_datasets(build_train_valid_test_datasets_provider):
                                       eval_iters * args.global_batch_size,
                                       args.test_iters * args.global_batch_size]
     elif args.codeformer:
-        total_val_samples = (train_samples // args.eval_interval_samples + 1) * args.eval_iters_samples #+ args.validation_samples
+        total_val_samples = (train_samples // args.eval_interval_samples + 1) * args.eval_iters_samples
         train_val_test_num_samples = [train_samples,
                                       total_val_samples,
                                       args.test_iters*args.global_batch_size]
 
-    print_rank_0(' > datasets target sizes (minimum size):')
+    print_rank_0(' > datasets target sizes (non unique samples to train/val/test on):')
     print_rank_0('    train:      {}'.format(train_val_test_num_samples[0]))
     print_rank_0('    validation: {}'.format(train_val_test_num_samples[1]))
     print_rank_0('    test:       {}'.format(train_val_test_num_samples[2]))

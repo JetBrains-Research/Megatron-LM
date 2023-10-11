@@ -31,7 +31,6 @@ encoders, divided by linear layer, and a decoder as a last block.
 Model parallelism is not implemented here, it needs additional work.
 
 Below is a text about model parallelism in T5 model 
-
 Pipeline parallelism is implemented slightly differently
 compared to architectures like GPT and BERT.
 
@@ -155,7 +154,7 @@ def forward_step(data_iterator, model):
 
 
 def train_valid_test_datasets_provider(train_val_test_num_samples):
-    """Build train, valid, and test datasets."""
+    """Build train, val, and test datasets."""
     args = get_args()
 
     print_rank_0("> building train, validation, and test datasets " "for CodeFormer ...")

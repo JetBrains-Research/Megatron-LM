@@ -83,12 +83,15 @@ def get_train_valid_test_sizes(splits_string, size):
     assert sum(splits_sample_size) == size
     return splits_sample_size
 
-def get_total_samples(data_path, meta_filename):
+def get_total_samples(data_path, meta_filename, separate_split_files=False):
     input_folder = os.path.dirname(data_path)
     meta_data_path = os.path.join(input_folder, meta_filename)
     with open(meta_data_path, "r") as f:
         data = json.load(f)
-    return data['total_docs']
+    if separate_split_files:
+        return (data['train'], data['val'], data['test'])
+    else:
+        return data['total_docs']
 
 def validate_args(args, defaults={}):
     # Tensor model parallel size.
@@ -183,8 +186,11 @@ def validate_args(args, defaults={}):
     assert args.global_batch_size > 0
 
     # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
-    total_samples = get_total_samples(args.data_path[0], 'dataset_size.json')
-    _, args.validation_samples, args.test_samples = get_train_valid_test_sizes(args.split, total_samples)
+    if args.separate_split_files:
+        _, _, args.test_samples = get_total_samples(args.data_path[0], args.dataset_size_file, separate_split_files=True)
+    else:
+        total_samples = get_total_samples(args.data_path[0], args.dataset_size_file)
+        _, _, args.test_samples = get_train_valid_test_sizes(args.split, total_samples)
 
     if args.eval_iters_samples:
         args.eval_iters = args.eval_iters_samples//args.global_batch_size
@@ -1417,6 +1423,9 @@ def _add_validation_args(parser):
 
 def _add_data_args(parser):
     group = parser.add_argument_group(title="data and dataloader")
+
+    group.add_argument("--separate-split-files", action="store_true", help="If train/val/test splits are in separate files")
+    group.add_argument("--dataset-size-file", type=str, default="dataset_size.json", help="Path to tokenized data")
 
     group.add_argument(
         "--data-path",

@@ -1,5 +1,7 @@
 MEGATRON_PATH="/home/galimzyanov/Megatron-LM"
 DATA_PATH="/home/galimzyanov/data/Megatron/dataset_dev"
+DATA_INPUT_PATH="/home/galimzyanov/data/Megatron/dataset_dev"
+DATA_INPUT2_PATH="/mnt/data/shared-data/lca/method_name_prediction_datasets/python_8k_100k"
 MODEL_PATH="/home/galimzyanov/data/Megatron/model_setup"
 CHECKPOINTS_PATH="/home/galimzyanov/data/Megatron/checkpoints_dev"
 BASH_HISTORY_PATH="/home/galimzyanov/.bash_docker_history"

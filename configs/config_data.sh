@@ -1,15 +1,16 @@
 DATA_ARGS="
     --split 800,100,100 \
-    --train-samples 3000 \
-    --eval-interval-samples 1000 \
-    --eval-iters-samples 100 \
+    --train-samples 300000 \
+    --eval-interval-samples 10000 \
+    --eval-iters-samples 1000 \
 "
 
 OUTPUT_ARGS="
     --log-interval 100 \
-    --save-interval-samples 30000 \
+    --save-interval-samples 10000 \
     --wandb-entity-name machine-learning-methods-in-software-engineering \
-    --wandb-project-name dev
+    --wandb-project-name dev \
+    --dataset-size-file dataset_size.json \
 "
 
 # timur-galimzyanov

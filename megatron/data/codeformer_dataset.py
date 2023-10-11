@@ -8,7 +8,6 @@ import os
 
 from megatron import get_tokenizer
 from megatron import get_args
-from megatron.data.dataset_utils import get_train_valid_test_split_
 
 import pydevd_pycharm
 
@@ -48,13 +47,12 @@ class CodeformerDataset(torch.utils.data.Dataset):
 
         # Build the samples mapping.
         # TODO may be use helpers.build_mapping (see language_model.py) for building sample mapping
-
-        self.samples_mapping = create_sample_mapping_cf(indexed_labels, seed, max_num_samples, name, data_prefix)
+        args = get_args()
+        self.samples_mapping = create_sample_mapping_cf(indexed_labels, seed, max_num_samples, name, data_prefix, args.separate_split_files)
         # self.n = 1
 
         # Vocab stuff.
         tokenizer = get_tokenizer()
-        args = get_args()
         self.vocab_id_list = list(tokenizer.inv_vocab.keys())
         self.vocab_id_to_token_dict = tokenizer.inv_vocab
         self.cls_id = tokenizer.cls
@@ -175,7 +173,7 @@ def make_history_mask(block):
     history_mask = history_mask.astype(np.int64)
     return history_mask
 
-def create_sample_mapping_cf(indexed_labels, seed, max_num_samples, name, data_prefix):
+def create_sample_mapping_cf(indexed_labels, seed, max_num_samples, name, data_prefix, separate_split_files=False):
     epochs = max_num_samples//(indexed_labels.doc_idx.shape[0]-1)
     resid_n = max_num_samples - epochs*(indexed_labels.doc_idx.shape[0]-1)
     if epochs == 0:
@@ -190,11 +188,13 @@ def create_sample_mapping_cf(indexed_labels, seed, max_num_samples, name, data_p
     samples_mapping = samples_mapping + [resid]
     samples_mapping = np.concatenate(samples_mapping)
 
-    split_set_sent_indices_file = f"{name}_set_indices.npy"
+    if not separate_split_files:
+        split_set_sent_indices_file = f"{name}_set_indices.npy"
+        split_set_sent_indices_file = os.path.join(os.path.dirname(data_prefix), split_set_sent_indices_file)
+        np.save(split_set_sent_indices_file, indexed_labels.doc_idx[:-1])
+
     split_sent_indices_file = f"{name}_indices.npy"
-    split_set_sent_indices_file = os.path.join(os.path.dirname(data_prefix), split_set_sent_indices_file)
     split_sent_indices_file = os.path.join(os.path.dirname(data_prefix), split_sent_indices_file)
-    np.save(split_set_sent_indices_file, indexed_labels.doc_idx[:-1])
     np.save(split_sent_indices_file, samples_mapping)
 
     return samples_mapping
