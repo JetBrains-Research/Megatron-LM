@@ -94,7 +94,6 @@ class CodeformerDataset(torch.utils.data.Dataset):
             pad_id=self.pad_id,
         )
 
-
 def build_training_sample(
     sample,
     label,
@@ -129,7 +128,8 @@ def build_training_sample(
     flattened_sample = np.concatenate(sample, axis=0, dtype=np.int64)
     # label is already padded
     label = np.array(label, dtype=np.int64)
-    loss_mask = (label != pad_id).astype(np.int64)
+    # TODO I removed label mask (label != pad_id)
+    loss_mask = (label != -100).astype(np.int64)
 
     # Create attention masks and padding them
     enc_mask = [make_attention_mask(sentence, sentence, pad_id) for sentence in sample]

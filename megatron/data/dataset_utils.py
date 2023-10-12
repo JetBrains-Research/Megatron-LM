@@ -567,43 +567,42 @@ def _build_train_valid_test_datasets(
 
     args = get_args()
     # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
-    # if label_prefix is not None:
-    #     indexed_labels = get_indexed_dataset_(label_prefix, dataset_type, skip_warmup)
-    # else:
-    #     indexed_labels = None
 
 # Get start and end indices of train/valid/train into doc-idx
     # Note that doc-idx is desinged to be num-docs + 1 so we can
     # easily iterate over it.
     # Indexed dataset.
     if not args.separate_split_files:
+        if label_prefix is not None:
+            indexed_labels = get_indexed_dataset_(label_prefix, dataset_type, skip_warmup)
+        else:
+            indexed_labels = None
         indexed_dataset = get_indexed_dataset_(data_prefix, dataset_type, skip_warmup)
         total_num_of_documents = indexed_dataset.doc_idx.shape[0] - 1
         splits = get_train_valid_test_split_(splits_string, total_num_of_documents)
         # Print stats about the splits.
         print_rank_0(" > dataset split:")
 
-    def print_split_stats(name, index):
-        print_rank_0("    {}:".format(name))
-        print_rank_0(
-            "     document indices in [{}, {}) total of {} "
-            "documents".format(splits[index], splits[index + 1], splits[index + 1] - splits[index])
-        )
-        start_index = indexed_dataset.doc_idx[splits[index]]
-        end_index = indexed_dataset.doc_idx[splits[index + 1]]
-        print_rank_0(
-            "     sentence indices in [{}, {}) total of {} "
-            "sentences".format(start_index, end_index, end_index - start_index)
-        )
+        def print_split_stats(name, index):
+            print_rank_0("    {}:".format(name))
+            print_rank_0(
+                "     document indices in [{}, {}) total of {} "
+                "documents".format(splits[index], splits[index + 1], splits[index + 1] - splits[index])
+            )
+            start_index = indexed_dataset.doc_idx[splits[index]]
+            end_index = indexed_dataset.doc_idx[splits[index + 1]]
+            print_rank_0(
+                "     sentence indices in [{}, {}) total of {} "
+                "sentences".format(start_index, end_index, end_index - start_index)
+            )
 
-    if not args.separate_split_files:
+
         print_split_stats("train", 0)
         print_split_stats("validation", 1)
         print_split_stats("test", 2)
 
-    def build_split_dataset(index, data_prefix, name):
-        dataset = None
-        if not args.separate_split_files:
+        def build_split_dataset(index, data_prefix, name):
+            dataset = None
             if splits[index + 1] > splits[index] and not args.separate_split_files:
                 # Get the pointer to the original doc-idx so we can set it later.
                 doc_idx_ptr = indexed_dataset.get_doc_idx()
@@ -616,7 +615,37 @@ def _build_train_valid_test_datasets(
                 if indexed_labels is not None:
                     label_idx_ptr = indexed_labels.get_doc_idx()
                     indexed_labels.set_doc_idx(label_idx_ptr[start_index:end_index])
-        else:
+
+            # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
+
+            dataset = build_dataset(
+                name,
+                data_prefix,
+                label_prefix,
+                train_valid_test_num_samples[index],
+                max_seq_length,
+                seed,
+                skip_warmup,
+                binary_head,
+                max_seq_length_dec,
+                dataset_type,
+                indexed_dataset,
+                indexed_labels,
+            )
+
+            # Set the original pointer so dataset remains the main dataset.
+            indexed_dataset.set_doc_idx(doc_idx_ptr)
+            # Checks.
+            assert indexed_dataset.doc_idx[0] == 0
+            assert indexed_dataset.doc_idx.shape[0] == (total_num_of_documents + 1)
+            if indexed_labels is not None:
+                indexed_labels.set_doc_idx(label_idx_ptr)
+                assert indexed_labels.doc_idx[0] == 0
+
+            return dataset
+    else:
+        def build_split_dataset(index, data_prefix, name):
+            dataset = None
             directory, filename = os.path.split(data_prefix)
             if name == 'val':
                 filename = filename.replace('train', 'val')
@@ -627,35 +656,24 @@ def _build_train_valid_test_datasets(
             indexed_dataset = None
             indexed_labels = None
 
-        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
+            # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
 
-        dataset = build_dataset(
-            name,
-            data_prefix,
-            label_prefix,
-            train_valid_test_num_samples[index],
-            max_seq_length,
-            seed,
-            skip_warmup,
-            binary_head,
-            max_seq_length_dec,
-            dataset_type,
-            indexed_dataset,
-            indexed_labels,
-        )
+            dataset = build_dataset(
+                name,
+                data_prefix,
+                label_prefix,
+                train_valid_test_num_samples[index],
+                max_seq_length,
+                seed,
+                skip_warmup,
+                binary_head,
+                max_seq_length_dec,
+                dataset_type,
+                indexed_dataset,
+                indexed_labels,
+            )
 
-        # Set the original pointer so dataset remains the main dataset.
-        if not args.separate_split_files:
-            indexed_dataset.set_doc_idx(doc_idx_ptr)
-            # Checks.
-            assert indexed_dataset.doc_idx[0] == 0
-            assert indexed_dataset.doc_idx.shape[0] == (total_num_of_documents + 1)
-            if indexed_labels is not None:
-                indexed_labels.set_doc_idx(label_idx_ptr)
-                assert indexed_labels.doc_idx[0] == 0
-
-
-        return dataset
+            return dataset
 
     train_dataset = build_split_dataset(0, data_prefix, "train")
     valid_dataset = build_split_dataset(1, data_prefix, "val")

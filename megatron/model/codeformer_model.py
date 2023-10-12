@@ -106,6 +106,7 @@ class CodeformerModel(MegatronModule):
     ):
 
         # Converting the attention masks to proper parameter settings
+        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
 
         enc_mask, sent_mask, enc_dec_mask, dec_mask = extended_attention_mask(
             [enc_mask, sent_mask, enc_dec_mask, dec_mask]
@@ -133,7 +134,10 @@ class CodeformerModel(MegatronModule):
                 return lm_logits.transpose(0, 1).contiguous()
             else:
                 # [b s] => [s b]
+                # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
                 lm_labels = lm_labels.transpose(0, 1).contiguous()
+                lm_labels = lm_labels[1:]
+                lm_logits = lm_logits[:-1]
                 if self.fp16_lm_cross_entropy:
                     assert lm_logits.dtype == torch.half
                     lm_loss = tensor_parallel.vocab_parallel_cross_entropy(lm_logits, lm_labels)

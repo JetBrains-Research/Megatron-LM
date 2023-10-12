@@ -409,12 +409,13 @@ class СodeformerLanguageModel(MegatronModule):
             self.rotary_pos_emb_dec = RotaryEmbedding(
                 rotary_dim, seq_len_interpolation_factor=args.rotary_seq_len_interpolation_factor
             )
-        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
+
         # Encoder (usually set to True, False if part of an encoder-decoder
         # architecture and in encoder-only stage).
         self.encoder_1 = ParallelTransformer(
             config,
             model_type=ModelType.encoder_and_decoder,
+            self_attn_mask_type = AttnMaskType.padding,
             is_codeformer=True,
             enc_num=1,
             pre_process=self.pre_process,
@@ -429,6 +430,7 @@ class СodeformerLanguageModel(MegatronModule):
         self.encoder_2 = ParallelTransformer(
             config,
             model_type=ModelType.encoder_and_decoder,
+            self_attn_mask_type = AttnMaskType.padding,
             is_codeformer=True,
             enc_num=2,
             pre_process=self.pre_process,
@@ -520,13 +522,9 @@ class СodeformerLanguageModel(MegatronModule):
         output_enc_hidden=False,
     ):
 
-        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
         # Encoder embedding.
         b = sent_nums.size(0)
         max_sent_num_batch = sent_mask.size(2)
-        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
-        # enc_input_ids = rearrange(enc_input_ids, "b (s t) -> (b s) t", t=self.max_sent_length)
-        # enc_mask = rearrange(enc_mask, "b 1 s ... -> (b s) 1 ...")
 
         enc_position_ids = self.get_position_ids(enc_input_ids)
         dec_position_ids = self.get_position_ids(dec_input_ids)
@@ -549,7 +547,7 @@ class СodeformerLanguageModel(MegatronModule):
                 rotary_pos_emb_1 = self.rotary_pos_emb_1(self.max_sent_length)
                 rotary_pos_emb_2 = self.rotary_pos_emb_2(max_sent_num_batch)
                 rotary_pos_emb_dec = self.rotary_pos_emb_dec(self.max_label_length)
-
+        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
         if enc_hidden_states is None:
             input_embeddings = self.encoder_1(
                 input_embeddings,
@@ -578,6 +576,9 @@ class СodeformerLanguageModel(MegatronModule):
                 rotary_pos_emb=rotary_pos_emb_2,
             )
 
+            # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
+            # dec_mask[:] = True
+            # dec_mask[:, :, :,0] = False
             output = self.decoder(
                 decoder_input,
                 attention_mask=dec_mask,
@@ -586,7 +587,6 @@ class СodeformerLanguageModel(MegatronModule):
                 inference_params=inference_params,
                 rotary_pos_emb=rotary_pos_emb_dec,
             )
-
         else:
             output = enc_hidden_states.to(input_embeddings.dtype)
 

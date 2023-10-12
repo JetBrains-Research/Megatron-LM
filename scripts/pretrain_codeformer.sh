@@ -20,6 +20,7 @@ export WANDB_BASE_URL="https://jetbrains.wandb.io"
 export CUDA_VISIBLE_DEVICES=1
 torchrun pretrain_codeformer.py \
     --codeformer\
+    --separate-split-files \
     $DATA_PATHS \
     $MODEL_ARGS \
     $DATA_ARGS \
@@ -28,3 +29,5 @@ torchrun pretrain_codeformer.py \
     --save $CHECKPOINT_PATH \
 #    --load $CHECKPOINT_PATH
 
+
+#pretrain_codeformer.py

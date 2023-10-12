@@ -91,7 +91,7 @@ def get_total_samples(data_path, meta_filename, separate_split_files=False):
     if separate_split_files:
         return (data['train'], data['val'], data['test'])
     else:
-        return data['total_docs']
+        return data['train']
 
 def validate_args(args, defaults={}):
     # Tensor model parallel size.
@@ -329,8 +329,10 @@ def validate_args(args, defaults={}):
     args.seq_length = args.max_sent_length
     args.encoder_seq_length = args.max_sent_length
     # accounts for BOS and EOS tokens
-    if args.codeformer:
+    # TODO this is done to make T5 pipeline running simpler
+    if True:# args.codeformer:
         args.max_position_embeddings = args.max_sent_length + 2
+        # args.decoder_seq_length = 18
 
     if args.seq_length is not None:
         assert args.max_position_embeddings >= args.seq_length

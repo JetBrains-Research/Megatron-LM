@@ -14,6 +14,7 @@ from megatron.model import CodeformerModel
 from megatron.training import pretrain
 from megatron.utils import average_losses_across_data_parallel_group
 from megatron.arguments import core_transformer_config_from_args
+import time
 import pydevd_pycharm
 
 # TODO FINAL delete all pydevd_pycharm instances at the end
@@ -118,6 +119,7 @@ def loss_func(loss_mask, output):
     else:
         lm_loss = output
 
+    loss_mask = loss_mask[:,1:]
     lm_loss_ = lm_loss.float()
     lm_loss = torch.sum(lm_loss_.view(-1) * loss_mask.reshape(-1)) / loss_mask.sum()
 
@@ -179,6 +181,7 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
 
 
 if __name__ == "__main__":
+    start_time = time.time()
     pretrain(
         train_valid_test_datasets_provider,
         model_provider,
@@ -186,3 +189,5 @@ if __name__ == "__main__":
         forward_step,
         args_defaults={"tokenizer_type": "HFTokenizer", "tokenizer_model": "Salesforce/codet5p-220m"},
     )
+    end_time = time.time()
+    print(f'Total time used = {(end_time - start_time):.0f} s.')

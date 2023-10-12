@@ -141,8 +141,7 @@ class Partition(object):
             json.dump(line_count_dict, json_file)
             json_file.write("\n")
 
-    def process_json_file(self, file_name, output_prefix, processed_folder, output_json_path):
-        # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
+    def process_json_file(self, file_name, output_prefix, processed_folder, output_json_path, separate_split_files):
         input_file_name, output_prefix = file_name, output_prefix[:-6]
         _, output_name = os.path.split(output_prefix)
         output_prefix = os.path.join(processed_folder, output_name)
@@ -189,12 +188,14 @@ class Partition(object):
             self.print_processing_stats(i, proc_start, total_bytes_processed)
 
         fin.close()
+        # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
         print(f'Number of tree errors = {total_errors}')
+        if not separate_split_files:
+            output_name = 'train'
         print(f'Final number of docs in {output_name} = {total_docs_processed}')
         self.save_data_size(output_json_path, output_name, total_docs_processed)
         for key in self.args.json_keys:
             builders[key].finalize(output_idx_files[key])
-
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -315,6 +316,7 @@ def main():
             }
             in_ss_out_names.append(file_names)
     elif args.partitions == 1:  # Number of files in partition
+        args.input = args.input[0]
         file_name, extension = os.path.splitext(args.input)
         sentence_split_file = file_name + "_ss" + extension
         file_names = {
@@ -390,7 +392,7 @@ def main():
         os.remove(output_json_path)
 
     for name in in_ss_out_names:
-        p = multiprocessing.Process(target=partition.process_json_file, args=((name["partition"], name["partition"], processed_folder, output_json_path)))
+        p = multiprocessing.Process(target=partition.process_json_file, args=((name["partition"], name["partition"], processed_folder, output_json_path, args.separate_split_files)))
         p.start()
         processes.append(p)
 

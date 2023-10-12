@@ -6,7 +6,7 @@ MODEL_ARGS="
     --decoder-num-layers 8 \
     --hidden-size 1024 \
     --num-attention-heads 8 \
-    --use-flash-attn
+    --use-flash-attn \
     --position-embedding-type rope\
     --kv-channels 64 \
     --ffn-hidden-size 2048 \
@@ -21,13 +21,13 @@ MODEL_ARGS="
     --vocab-extra-ids 100
 "
 #     --epochs 2 \
+#    --use-flash-attn \
+
 # Note, that finally label would be (max-label-length+2) due to BOS and EOS tokens.
 DATA_PROC_ARGS="
 --max-context-length 4096 \
 --max-sent-num 384 \
 --max-label-length 5 \
 --max-sent-length 16 \
---language java \
---separate-split-files \
+--language python \
 "
-# --separate-split-files
