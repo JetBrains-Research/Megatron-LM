@@ -33,7 +33,7 @@ DATA_PATHS="
 export WANDB_DISABLE_GIT=true
 export WANDB_BASE_URL="https://jetbrains.wandb.io"
 
-export CUDA_VISIBLE_DEVICES=3,5,6,7
+export CUDA_VISIBLE_DEVICES=2,3,6,7
 
 torchrun $DISTRIBUTED_ARGS pretrain_codeformer.py \
     --codeformer\
@@ -45,4 +45,5 @@ torchrun $DISTRIBUTED_ARGS pretrain_codeformer.py \
     $OUTPUT_ARGS \
     --distributed-backend nccl \
     --save $CHECKPOINT_PATH \
-#    --load $CHECKPOINT_PATH
+#    --load $CHECKPOINT_PATH \
+#    --finetune

@@ -81,7 +81,8 @@ def get_megatron_optimizer(model,
         optimizer = SGD(param_groups,
                         lr=args.lr,
                         weight_decay=args.weight_decay,
-                        momentum=args.sgd_momentum)
+                        momentum=args.sgd_momentum,
+                        nesterov=args.nesterov)
     else:
         raise Exception('{} optimizer is not supported.'.format(
             args.optimizer))

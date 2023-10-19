@@ -889,6 +889,7 @@ def _add_regularization_args(parser):
         "--adam-eps", type=float, default=1e-08, help="Term added to the denominator to improve" "numerical stability"
     )
     group.add_argument("--sgd-momentum", type=float, default=0.9, help="Momentum factor for sgd")
+    group.add_argument("--nesterov", action="store_true", help="Nesterov momentum for sgd")
 
     return parser
 

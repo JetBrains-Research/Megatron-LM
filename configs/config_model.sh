@@ -8,18 +8,23 @@ MODEL_ARGS="
     --num-attention-heads 8 \
     --use-flash-attn \
     --position-embedding-type rope\
-    --kv-channels 64 \
     --ffn-hidden-size 2048 \
-    --micro-batch-size 48 \
-    --global-batch-size 192 \
-    --lr 0.0001 \
-    --min-lr 0.00001 \
-    --weight-decay 1e-2 \
-    --lr-warmup-fraction .01 \
-    --clip-grad 1.0 \
-    --fp16 \
+    --micro-batch-size 40 \
+    --global-batch-size 160 \
+    --optimizer sgd \
+    --lr 0.01 \
+    --min-lr 0.01 \
+    --lr-warmup-init 0.0033\
+    --lr-warmup-fraction .99 \
+    --sgd-momentum 0.95 \
+    --nesterov \
+    --weight-decay 1e-4 \
+    --clip-grad 5.0 \
+    --fp16
     --vocab-extra-ids 100
 "
+#     --fp16 \
+#    --kv-channels 64 \
 #     --epochs 2 \
 #    --use-flash-attn \
 

@@ -438,6 +438,9 @@ class СodeformerLanguageModel(MegatronModule):
         )
         self._encoder_2_key = "encoder_2"
 
+        # for p1, p2 in zip(self.encoder_1.parameters(), self.encoder_2.parameters()):
+        #     p2.data = p1.data
+
         self.decoder = ParallelTransformer(
             config,
             model_type=ModelType.encoder_and_decoder,
@@ -530,7 +533,8 @@ class СodeformerLanguageModel(MegatronModule):
         dec_position_ids = self.get_position_ids(dec_input_ids)
         if self.pre_process:
             input_embeddings = self.embedding(enc_input_ids, enc_position_ids, tokentype_ids=tokentype_ids)
-            decoder_input = self.embedding_dec(dec_input_ids, dec_position_ids, tokentype_ids=tokentype_ids)
+            # decoder_input = self.embedding_dec(dec_input_ids, dec_position_ids, tokentype_ids=tokentype_ids)
+            decoder_input = self.embedding(dec_input_ids, dec_position_ids, tokentype_ids=tokentype_ids)
         else:
             input_embeddings = None
 
