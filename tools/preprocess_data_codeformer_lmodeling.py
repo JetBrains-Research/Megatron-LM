@@ -16,7 +16,6 @@ import multiprocessing
 from codeformer_utils.vendor.codeformer import (
     AstCodeSplitter,
     MyTextTree,
-    MyCodeTree,
     transform_sequence_according_to_split_with_begin_end_tokens
 )
 
@@ -52,36 +51,32 @@ class IdentitySplitter(object):
 class Encoder(object):
     def __init__(self, args):
         self.args = args
-        self.task = self.args.task
 
     def initializer(self):
         # Use Encoder class as a container for global data
         Encoder.tokenizer = build_tokenizer(self.args)
         # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
-        path_to_tree_sitter = f"{self.args.tree_sitter_path}/tree-sitter-{self.args.language}"
-        if self.task == "method_naming":
-            Encoder.splitter = MyCodeTree(self.args.language, path_to_tree_sitter)
-        else:
-            Encoder.splitter = MyTextTree()
+        config = {
+            # TODO what parameters should we pass?
+            # "programming_language": self.args.language,
+            # "path_to_tree_sitter": f"{self.args.tree_sitter_path}/tree-sitter-{self.args.language}",
+            # "max_code_parts": self.args.max_context_length,
+            # "max_subsequence_size": self.args.max_sent_length,
+            # "max_subsequences_number": self.args.max_sent_num,
+        }
+
+        # Encoder.splitter_ast = AstCodeSplitter(config, Encoder.tokenizer)
+        Encoder.splitter_txt = MyTextTree()
 
     def split_and_tokenize(self, json_line):
-        data_key = None
-        # TODO may be pass from args
-        if "code" in self.args.json_keys:
-            data_key = "code"
-            label_key = "label"
-        if "text" in self.args.json_keys:
-            data_key = "text"
-            label_key = None
+        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
         try:
             data = json.loads(json_line)
-            input_data = data[data_key]
-            if label_key is not None:
-                label = data[label_key]
+            text = data["text"]
         except:
             # TODO this is a brute-force solution. Refactor it!
-            if len(self.args.json_keys)==1 and data_key=='text':
-                input_data = json_line[10:-2]
+            if len(self.args.json_keys)==1 and self.args.json_keys[0]=='text':
+                text = json_line[10:-2]
             else:
                 return [], [0]
 
@@ -89,46 +84,25 @@ class Encoder(object):
         bos_id = Encoder.tokenizer.bos
         eos_id = Encoder.tokenizer.eos
 
-        # TODO unify then, when ASTSplitter updated
-        if self.task == "method_naming":
-            input_data, _ = Encoder.splitter.remove_comments(input_data)
-            label_tokenized = Encoder.tokenizer.tokenize(
-                label.replace("|", " "),
-                padding="max_length",
-                truncation=True,
-                max_length=self.args.max_label_length + 2,  # Accounts for BOS and EOS tokens
-                )
-        else:
-            label_tokenized = None
+        tokenized_text = Encoder.tokenizer.tokenize(text)
+        tokenized_text = list(filter(lambda x: x != pad_id, tokenized_text))[1:-1]
+        tokens = Encoder.tokenizer.batch_decode(tokenized_text, skip_special_tokens=True)
 
         try:
-            tokenized_input = Encoder.tokenizer.tokenize(input_data, padding='do_not_pad',
-                                                         truncation=True,
-                                                         max_length=self.args.max_context_length,
-                                                         add_special_tokens=False)
-
-            # tokenized_input = list(filter(lambda x: x != pad_id, tokenized_input))
-            tokens = Encoder.tokenizer.batch_decode(tokenized_input, skip_special_tokens=True)
-            splits = Encoder.splitter.process_code(input_data, tokens, self.args.max_sent_length)
-            if sum(splits) != len(tokenized_input):
-                pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
-                return [], []
-            if self.args.max_sent_num < len(splits):
-                raise ValueError("Example is too long for such context length")
+            # split_res = Encoder.splitter_ast.split(data["code"])[0]
+            splits = Encoder.splitter_txt.process_text(text, tokens, self.args.max_sent_length)
         except:
-            return [], []
+            return [], [0]#([], [])
 
-        # returns tensor(n_sentence, sent_len) - splitted seq. Each sent wrapped by BOS and EOS token
         split_res = transform_sequence_according_to_split_with_begin_end_tokens(
-            torch.tensor(tokenized_input),  # list(token_ids)
+            torch.tensor(tokenized_text),  # list(token_ids)
             splits,  # list(sentence_lengths)
             len(splits),  # num_sentences
             self.args.max_sent_length,
             bos_id,
             eos_id,
         )
-
-        return split_res, label_tokenized
+        return split_res, splits #, label_tokenized
 
     def encode(self, json_line):
         ids = {}
@@ -150,9 +124,9 @@ class Encoder(object):
         ids, lens = {}, {}
         len_line = 0
         # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
-        ids["text"], _ = self.split_and_tokenize(json_line)
+        ids["text"], lens["text"] = self.split_and_tokenize(json_line)
         if len(ids["text"]) > 0:
-            lens["text"] = [len(sentence) for sentence in ids["text"]]
+            # lens["text"] = [len(sentence) for sentence in ids["text"]]
             len_line = len(json_line)
 
         return ids, lens, len_line
@@ -160,7 +134,6 @@ class Encoder(object):
 class Partition(object):
     def __init__(self, args, workers):
         self.args = args
-        self.task = self.args.task
         self.workers = workers
 
     def print_processing_stats(self, count, proc_start, total_bytes_processed):
@@ -196,7 +169,6 @@ class Partition(object):
             json_file.write("\n")
 
     def process_json_file(self, file_name, output_prefix, processed_folder, output_json_path, separate_split_files):
-        # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
         input_file_name, output_prefix = file_name, output_prefix[:-6]
         _, output_name = os.path.split(output_prefix)
         output_prefix = os.path.join(processed_folder, output_name)
@@ -207,10 +179,8 @@ class Partition(object):
         encoder = Encoder(self.args)
         tokenizer = build_tokenizer(self.args)
         pool = multiprocessing.Pool(self.workers, initializer=encoder.initializer)
-        if self.task == "method_naming":
-            encoded_docs = pool.imap(encoder.encode, fin, 32)
-        elif self.task == "language_modeling":
-            encoded_docs = pool.imap(encoder.encode_text, fin, 32)
+        # encoded_docs = pool.imap(encoder.encode, fin, 32)
+        encoded_docs = pool.imap(encoder.encode_text, fin, 32)
 
         level = "document"
         if self.args.split_sentences:
@@ -261,10 +231,9 @@ def get_args():
     group.add_argument("--input", nargs="+", type=str, required=True, help="Path to input JSON")
     group.add_argument("--separate-split-files", action="store_true", help="If train/val/test splits are in separate files")
     group.add_argument("--processed-folder", type=str, default="", help="Path to tokenized data")
-    group.add_argument("--task", type=str, choices=["method_naming", "language_modeling"])
     group.add_argument("--dataset-size-file", type=str, default="dataset_size.json", help="Path to tokenized data")
     group.add_argument(
-        "--json-keys", nargs="+", help="space separate listed of keys to extract from json"
+        "--json-keys", nargs="+", default=["text"], help="space separate listed of keys to extract from json"
     )
     group.add_argument("--split-sentences", action="store_true", help="Split documents into sentences.")
     group.add_argument("--keep-newlines", action="store_true", help="Keep newlines between sentences when splitting.")
@@ -332,13 +301,6 @@ def get_args():
     args.make_vocab_size_divisible_by = 128
     args.tensor_model_parallel_size = 1
     args.vocab_extra_ids = 0
-    # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
-
-    if args.json_keys is None:
-        if args.task == "method_naming":
-            args.json_keys = ["code", "label"]
-        elif args.task == "language_modeling":
-            args.json_keys = ["text"]
 
     return args
 
@@ -372,6 +334,7 @@ def main():
     args = get_args()
     processed_folder = args.processed_folder
     dataset_size_file = args.dataset_size_file
+    # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
     in_ss_out_names = []
     if args.separate_split_files:
         for file in args.input:
@@ -410,6 +373,7 @@ def main():
 
         # check to see if paritions were already created
         partitions_present = check_files_exist(in_ss_out_names, "partition", args.partitions)
+
         # check to see if paritions with split sentences already created
         split_sentences_present = check_files_exist(in_ss_out_names, "sentence_split", args.partitions)
 
@@ -455,7 +419,6 @@ def main():
     if os.path.exists(output_json_path):
         os.remove(output_json_path)
 
-    # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
     for name in in_ss_out_names:
         p = multiprocessing.Process(target=partition.process_json_file, args=((name["partition"], name["partition"], processed_folder, output_json_path, args.separate_split_files)))
         p.start()

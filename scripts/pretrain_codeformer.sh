@@ -17,10 +17,11 @@ DATA_PATHS="
 
 export WANDB_DISABLE_GIT=true
 export WANDB_BASE_URL="https://jetbrains.wandb.io"
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=2
 torchrun pretrain_codeformer.py \
     --codeformer\
     --separate-split-files \
+    --task method_naming \
     $DATA_PATHS \
     $MODEL_ARGS \
     $DATA_ARGS \

@@ -489,7 +489,8 @@ def build_train_valid_test_datasets(
     binary_head=False,
     max_seq_length_dec=None,
     dataset_type="standard_bert",
-    label_prefix=None
+    label_prefix=None,
+    task=None
 ):
 
     if label_prefix is not None:
@@ -507,10 +508,11 @@ def build_train_valid_test_datasets(
             max_seq_length_dec,
             dataset_type=dataset_type,
             label_prefix = label_prefix,
+            task = task
         )
     # Blending dataset.
     # Parse the values.
-    # TODO for now I do only processing single train-valid-test file
+    # TODO for now I do only processing single train-valid-test files
     output = get_datasets_weights_and_num_samples(data_prefix, train_valid_test_num_samples)
     prefixes, weights, datasets_train_valid_test_num_samples = output
     train_num_samples, valid_num_samples, test_num_samples = map(sum, zip(*datasets_train_valid_test_num_samples))
@@ -563,6 +565,7 @@ def _build_train_valid_test_datasets(
     max_seq_length_dec,
     dataset_type="standard_bert",
     label_prefix = None,
+    task = None
 ):
 
     args = get_args()
@@ -573,6 +576,7 @@ def _build_train_valid_test_datasets(
     # easily iterate over it.
     # Indexed dataset.
     if not args.separate_split_files:
+        # TODO this part is only for method_naming. Add Language modelling too
         if label_prefix is not None:
             indexed_labels = get_indexed_dataset_(label_prefix, dataset_type, skip_warmup)
         else:
@@ -644,7 +648,7 @@ def _build_train_valid_test_datasets(
 
             return dataset
     else:
-        def build_split_dataset(index, data_prefix, name):
+        def build_split_dataset(index, data_prefix, name, task):
             dataset = None
             directory, filename = os.path.split(data_prefix)
             if name == 'val':
@@ -652,7 +656,10 @@ def _build_train_valid_test_datasets(
             elif name == 'test':
                 filename = filename.replace("train", "test")
             data_prefix = os.path.join(directory, filename)
-            label_prefix = os.path.join(directory, filename.replace("code", "label"))
+            if task == "method_naming":
+                label_prefix = os.path.join(directory, filename.replace("code", "label"))
+            else:
+                label_prefix = None
             indexed_dataset = None
             indexed_labels = None
 
@@ -671,13 +678,14 @@ def _build_train_valid_test_datasets(
                 dataset_type,
                 indexed_dataset,
                 indexed_labels,
+                task
             )
 
             return dataset
 
-    train_dataset = build_split_dataset(0, data_prefix, "train")
-    valid_dataset = build_split_dataset(1, data_prefix, "val")
-    test_dataset = build_split_dataset(2, data_prefix, "test")
+    train_dataset = build_split_dataset(0, data_prefix, "train", task)
+    valid_dataset = build_split_dataset(1, data_prefix, "val", task)
+    test_dataset = build_split_dataset(2, data_prefix, "test", task)
 
     return (train_dataset, valid_dataset, test_dataset)
 
@@ -695,6 +703,7 @@ def build_dataset(
     dataset_type="standard_bert",
     indexed_dataset=None,
     indexed_labels=None,
+    task=None
 ):
 
     from megatron.data.bert_dataset import BertDataset
@@ -743,13 +752,14 @@ def build_dataset(
     elif dataset_type == DSET_TYPE_CF:
         args = get_args()
 
-        if indexed_labels is None:
+        if indexed_labels is None and task=='method_naming':
             indexed_labels = get_indexed_dataset_(label_prefix, dataset_type, skip_warmup)
         # elif (indexed_labels is not None) and (indexed_dataset is not None):
         #     pass
         # else:
         #     print('Both data and labels should be given or absent')
         dataset = CodeformerDataset(
+            task=task,
             indexed_dataset=indexed_dataset,
             indexed_labels=indexed_labels,
             masked_lm_prob=args.mask_prob,

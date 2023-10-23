@@ -34,5 +34,5 @@ DATA_PROC_ARGS="
 --max-sent-num 384 \
 --max-label-length 5 \
 --max-sent-length 16 \
---language python \
+--language java \
 "

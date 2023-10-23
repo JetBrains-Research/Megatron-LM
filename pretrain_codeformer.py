@@ -160,8 +160,12 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
     args = get_args()
 
     print_rank_0("> building train, validation, and test datasets " "for CodeFormer ...")
-    data_prefix=args.data_path
-    label_prefix = [prefix.replace("code", "label") for prefix in data_prefix]
+    data_prefix=args.data_path #${DATA_PATH}/processed/train_code_sentence
+    if args.task == 'method_naming':
+        # TODO pass "code", "label" from arguments
+        label_prefix = [prefix.replace("code", "label") for prefix in data_prefix]
+    else:
+        label_prefix = None
     # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
 
     train_ds, valid_ds, test_ds = build_train_valid_test_datasets(
@@ -173,7 +177,8 @@ def train_valid_test_datasets_provider(train_val_test_num_samples):
         seed=args.seed,
         skip_warmup=(not args.mmap_warmup),
         dataset_type="codeformer",
-        label_prefix=label_prefix
+        label_prefix=label_prefix,
+        task = args.task
     )
     print_rank_0("> finished creating CodeFormer datasets ...")
 

@@ -28,7 +28,7 @@ class CFMetrics():
         prediction = logits.argmax(-1)
         pred_txt = self.tokenizer.batch_decode(prediction.t(), skip_special_tokens=True)
         label_txt = self.tokenizer.batch_decode(label_tokens.t(), skip_special_tokens=True)
-        with open('out.txt', 'a') as f:
+        with open('out.txt', 'a', encoding='utf-8') as f:
             for lab, pred in zip(label_txt, pred_txt):
                 f.write(f'{lab} ---- {pred} \n')
         metric = self.metrics["f1"](prediction, label_tokens)

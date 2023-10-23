@@ -1427,6 +1427,7 @@ def _add_validation_args(parser):
 def _add_data_args(parser):
     group = parser.add_argument_group(title="data and dataloader")
 
+    group.add_argument("--task", type=str, choices=["method_naming", "language_modeling"])
     group.add_argument("--separate-split-files", action="store_true", help="If train/val/test splits are in separate files")
     group.add_argument("--dataset-size-file", type=str, default="dataset_size.json", help="Path to tokenized data")
 

@@ -27,7 +27,7 @@ DISTRIBUTED_ARGS="
 DATA_PATHS="
     --data-path $DATA_PROCESSED_PATH \
     --vocab-file $VOCAB_FILE \
-    --tensorboard-dir $LOGGING_PATH \
+    --tensorboard-dir $LOGGING_PATH
 "
 
 export WANDB_DISABLE_GIT=true
@@ -38,6 +38,7 @@ export CUDA_VISIBLE_DEVICES=2,3,6,7
 torchrun $DISTRIBUTED_ARGS pretrain_codeformer.py \
     --codeformer\
     --separate-split-files \
+    --task method_naming \
     $DATA_PATHS \
     $MODEL_ARGS \
     $DATA_ARGS \

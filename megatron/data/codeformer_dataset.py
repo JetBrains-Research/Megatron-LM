@@ -17,6 +17,7 @@ PORT_DEBUG = 2000
 class CodeformerDataset(torch.utils.data.Dataset):
     def __init__(
         self,
+        task,
         name,
         indexed_dataset,
         indexed_labels,
@@ -28,7 +29,7 @@ class CodeformerDataset(torch.utils.data.Dataset):
         max_seq_length_dec,
         max_sent_num,
         max_label_length,
-        seed,
+        seed
     ):
 
         # Params to store.
@@ -48,11 +49,14 @@ class CodeformerDataset(torch.utils.data.Dataset):
         # Build the samples mapping.
         # TODO may be use helpers.build_mapping (see language_model.py) for building sample mapping
         args = get_args()
-        self.samples_mapping = create_sample_mapping_cf(indexed_labels, seed, max_num_samples, name, data_prefix, args.separate_split_files)
+        # TODO you should to change this, to exclude indexed_labels.
+        num_samples = indexed_dataset.doc_idx.shape[0]-1
+        self.samples_mapping = create_sample_mapping_cf(num_samples, seed, max_num_samples, name, data_prefix, args.separate_split_files)
         # self.n = 1
 
         # Vocab stuff.
         tokenizer = get_tokenizer()
+        self.task = task
         self.vocab_id_list = list(tokenizer.inv_vocab.keys())
         self.vocab_id_to_token_dict = tokenizer.inv_vocab
         self.cls_id = tokenizer.cls
@@ -70,13 +74,13 @@ class CodeformerDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
-        # if self.name == 'train':
-        #     print(self.n, idx)
-        #     self.n += 1
         doc_index = self.samples_mapping[idx]
         sent_idx_start = self.indexed_dataset.doc_idx[doc_index]
         sent_idx_end = self.indexed_dataset.doc_idx[doc_index + 1]
-        label = self.indexed_labels[doc_index]
+        if self.task == 'method_naming':
+            label = self.indexed_labels[doc_index]
+        else:
+            label = None
         sample = []
         for index in range(sent_idx_start, sent_idx_end):
             # I do not do any truncation or padding here
@@ -85,6 +89,7 @@ class CodeformerDataset(torch.utils.data.Dataset):
             sample.append(sentence)
 
         return build_training_sample(
+            self.task,
             sample,
             label,
             self.max_sent_num,
@@ -95,6 +100,7 @@ class CodeformerDataset(torch.utils.data.Dataset):
         )
 
 def build_training_sample(
+    task,
     sample,
     label,
     max_sent_num,
@@ -123,10 +129,8 @@ def build_training_sample(
     pad_id = 0
     sample = sample[:max_sent_num]
     num_sent = len(sample)
-    # Padding.
-    # sample = sample + (max_sent_num - num_sent) * [0 * sample[0]]
     flattened_sample = np.concatenate(sample, axis=0, dtype=np.int64)
-    # label is already padded
+    # TODO we should decide, what would be out label.
     label = np.array(label, dtype=np.int64)
     # TODO I removed label mask (label != pad_id)
     loss_mask = (label != -100).astype(np.int64)
@@ -173,25 +177,27 @@ def make_history_mask(block):
     history_mask = history_mask.astype(np.int64)
     return history_mask
 
-def create_sample_mapping_cf(indexed_labels, seed, max_num_samples, name, data_prefix, separate_split_files=False):
-    epochs = max_num_samples//(indexed_labels.doc_idx.shape[0]-1)
-    resid_n = max_num_samples - epochs*(indexed_labels.doc_idx.shape[0]-1)
+def create_sample_mapping_cf(num_samples, seed, max_num_samples, name, data_prefix, separate_split_files=False):
+    epochs = max_num_samples//num_samples
+    resid_n = max_num_samples - epochs*num_samples
     if epochs == 0:
         epochs = 1
         resid_n = 0
     np.random.seed(seed)
     samples_mapping = []
+    sample_range = np.arange(num_samples)
     for _ in range(epochs):
-        shuffled_copy = np.random.permutation(indexed_labels.doc_idx[:-1])
+        shuffled_copy = np.random.permutation(sample_range)
         samples_mapping.append(shuffled_copy)
-    resid = np.random.choice(indexed_labels.doc_idx[:-1], resid_n, replace=False)
+    resid = np.random.choice(sample_range, resid_n, replace=False)
     samples_mapping = samples_mapping + [resid]
     samples_mapping = np.concatenate(samples_mapping)
 
     if not separate_split_files:
+        # TODO it would work inproperly if we input single file, not splitted into train-val-test
         split_set_sent_indices_file = f"{name}_set_indices.npy"
         split_set_sent_indices_file = os.path.join(os.path.dirname(data_prefix), split_set_sent_indices_file)
-        np.save(split_set_sent_indices_file, indexed_labels.doc_idx[:-1])
+        np.save(split_set_sent_indices_file, sample_range)
 
     split_sent_indices_file = f"{name}_indices.npy"
     split_sent_indices_file = os.path.join(os.path.dirname(data_prefix), split_sent_indices_file)
