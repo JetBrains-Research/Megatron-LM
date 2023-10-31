@@ -61,16 +61,19 @@ class CodeformerModel(MegatronModule):
         post_process=True,
     ):
         super().__init__(config=config)
-        args = get_args()
+        self.args = get_args()
 
-        self.fp16_lm_cross_entropy = args.fp16_lm_cross_entropy
+        self.fp16_lm_cross_entropy = self.args.fp16_lm_cross_entropy
         self.parallel_output = parallel_output
         self.pre_process = pre_process
         self.post_process = post_process
+        self.task = self.args.task
+        self.first = 0
 
         self.language_model, self._language_model_key = get_language_model(
             config=config,
             add_pooler=False,
+            task = self.task,
             add_encoder=add_encoder,
             add_decoder=add_decoder,
             pre_process=self.pre_process,
@@ -112,7 +115,7 @@ class CodeformerModel(MegatronModule):
             [enc_mask, sent_mask, enc_dec_mask, dec_mask]
         )
 
-        lm_output = self.language_model(
+        decoder_output = self.language_model(
             encoder_input_ids,
             decoder_input_ids,
             sent_nums,
@@ -125,8 +128,9 @@ class CodeformerModel(MegatronModule):
         )
 
         if self.post_process:
-            decoder_output = lm_output
             # Output. [s, b, h]
+            if self.task == "language_modeling":
+                lm_labels = encoder_input_ids
             lm_logits = self.lm_head(decoder_output, self.shared_embedding_or_output_weight())
 
             if lm_labels is None:
@@ -153,7 +157,6 @@ class CodeformerModel(MegatronModule):
                 return lm_loss, result
             return lm_loss
         else:
-            decoder_output = lm_output
             return decoder_output
 
     def state_dict_for_save_checkpoint(self, prefix="", keep_vars=False):

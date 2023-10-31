@@ -8,13 +8,14 @@ import os
 import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
+# TODO I have export PYTHONPATH="${PYTHONPATH}:/workspace/megatron/codeformer_utils/vendor/codeformer" to import jetnn
 import time
 import gzip
 import glob
 import torch
 import multiprocessing
 from codeformer_utils.vendor.codeformer import (
-    AstCodeSplitter,
+    # AstCodeSplitter,
     MyTextTree,
     MyCodeTree,
     transform_sequence_according_to_split_with_begin_end_tokens
@@ -61,8 +62,18 @@ class Encoder(object):
         path_to_tree_sitter = f"{self.args.tree_sitter_path}/tree-sitter-{self.args.language}"
         if self.task == "method_naming":
             Encoder.splitter = MyCodeTree(self.args.language, path_to_tree_sitter)
+            Encoder.process_input = Encoder.splitter.process_code
+            # config = {
+            #     "programming_language": self.args.language,
+            #     "path_to_tree_sitter": f"{self.args.tree_sitter_path}/tree-sitter-{self.args.language}",
+            #     "max_code_parts": self.args.max_context_length,
+            #     "max_subsequence_size": self.args.max_sent_length,
+            #     "max_subsequences_number": self.args.max_sent_num,
+            # }
+            # Encoder.splitter = AstCodeSplitter(config, Encoder.tokenizer)
         else:
             Encoder.splitter = MyTextTree()
+            Encoder.process_input = Encoder.splitter.process_text
 
     def split_and_tokenize(self, json_line):
         data_key = None
@@ -91,7 +102,10 @@ class Encoder(object):
 
         # TODO unify then, when ASTSplitter updated
         if self.task == "method_naming":
-            input_data, _ = Encoder.splitter.remove_comments(input_data)
+            try:
+                input_data, _, method_location = Encoder.splitter.remove_comments(input_data, data["method_location"])
+            except:
+                return [], []
             label_tokenized = Encoder.tokenizer.tokenize(
                 label.replace("|", " "),
                 padding="max_length",
@@ -100,33 +114,42 @@ class Encoder(object):
                 )
         else:
             label_tokenized = None
-
         try:
-            tokenized_input = Encoder.tokenizer.tokenize(input_data, padding='do_not_pad',
-                                                         truncation=True,
-                                                         max_length=self.args.max_context_length,
-                                                         add_special_tokens=False)
+            # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
 
-            # tokenized_input = list(filter(lambda x: x != pad_id, tokenized_input))
+            tokenized_input = Encoder.tokenizer.tokenize(
+                input_data,
+                add_special_tokens=False,
+                padding="do_not_pad",
+                max_length=self.args.max_context_length,
+                truncation=True,
+            )
+
             tokens = Encoder.tokenizer.batch_decode(tokenized_input, skip_special_tokens=True)
-            splits = Encoder.splitter.process_code(input_data, tokens, self.args.max_sent_length)
-            if sum(splits) != len(tokenized_input):
-                pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
-                return [], []
+            splits = Encoder.process_input(input_data, tokens, self.args.max_sent_length)
+            
+            num_splits = len(splits)
+            # returns tensor(n_sentence, sent_len) - splitted seq. Each sent wrapped by BOS and EOS token
+            split_res = transform_sequence_according_to_split_with_begin_end_tokens(
+                torch.tensor(tokenized_input),  # list(token_ids)
+                splits,  # list(sentence_lengths)
+                num_splits,  # num_sentences
+                self.args.max_sent_length,
+                bos_id,
+                eos_id,
+            )
+            if sum(splits) != len(tokens):
+                with open('len_diff.txt', 'a') as f:
+                    f.write(str(sum(splits)-len(tokens)))
+                    f.write('\n')
+                # with open('len_diff_rel.txt', 'a') as f:
+                #     f.write(str(sum(splits)/len(tokens) -1))
+                #     f.write('\n')
+                #return [], []
             if self.args.max_sent_num < len(splits):
                 raise ValueError("Example is too long for such context length")
         except:
             return [], []
-
-        # returns tensor(n_sentence, sent_len) - splitted seq. Each sent wrapped by BOS and EOS token
-        split_res = transform_sequence_according_to_split_with_begin_end_tokens(
-            torch.tensor(tokenized_input),  # list(token_ids)
-            splits,  # list(sentence_lengths)
-            len(splits),  # num_sentences
-            self.args.max_sent_length,
-            bos_id,
-            eos_id,
-        )
 
         return split_res, label_tokenized
 
@@ -221,6 +244,13 @@ class Partition(object):
         builders = {}
 
         for key in self.args.json_keys:
+            # if "train" in output_prefix:
+            #     output_prefix = "train"
+            # elif "val" in output_prefix:
+            #     output_prefix = "val"
+            # elif "test" in output_prefix:
+            #     output_prefix = "test"
+
             output_bin_files[key] = "{}_{}_{}.bin".format(output_prefix, key, level)
             output_idx_files[key] = "{}_{}_{}.idx".format(output_prefix, key, level)
             builders[key] = indexed_dataset.MMapIndexedDatasetBuilder(
@@ -339,6 +369,8 @@ def get_args():
             args.json_keys = ["code", "label"]
         elif args.task == "language_modeling":
             args.json_keys = ["text"]
+
+    os.makedirs(args.processed_folder, exist_ok=True)
 
     return args
 

@@ -67,6 +67,8 @@ class CodeformerDataset(torch.utils.data.Dataset):
         self.bos_id = tokenizer.bos_token_id
         self.eos_id = tokenizer.eos_token_id
         self.sentinel_tokens = tokenizer.additional_special_tokens_ids
+        self.first = 0
+        self.args = args
         assert len(self.sentinel_tokens) > 0, "Provide the argument --vocab-extra-ids 100 to the script"
 
     def __len__(self):
@@ -87,6 +89,11 @@ class CodeformerDataset(torch.utils.data.Dataset):
             # everything is already done in data preprocessing
             sentence = self.indexed_dataset[index]
             sample.append(sentence)
+
+        # Warmup - added first maximal size batch to be sure that all other batche will fit into the model
+        if self.first < 2*self.args.micro_batch_size:
+            sample = sample + (self.max_sent_num-len(sample))*[(self.args.max_sent_length+2)*[1]]
+            self.first += 1
 
         return build_training_sample(
             self.task,
@@ -130,17 +137,24 @@ def build_training_sample(
     sample = sample[:max_sent_num]
     num_sent = len(sample)
     flattened_sample = np.concatenate(sample, axis=0, dtype=np.int64)
-    # TODO we should decide, what would be out label.
-    label = np.array(label, dtype=np.int64)
-    # TODO I removed label mask (label != pad_id)
-    loss_mask = (label != -100).astype(np.int64)
-
-    # Create attention masks and padding them
+    sample = np.array(sample, dtype=np.int64)
     enc_mask = [make_attention_mask(sentence, sentence, pad_id) for sentence in sample]
-    dec_mask = make_attention_mask(label, label, pad_id)
-    dec_mask = dec_mask * make_history_mask(label)
-    ## Mask for the second encoder is build in collate_fn in data_sampler
+    if task == "method_naming":
+        label = np.array(label, dtype=np.int64)
+        # TODO I removed label mask (label != pad_id)
+        loss_mask = (label != -100).astype(np.int64)
+        dec_mask = make_attention_mask(label, label, pad_id)
+        dec_mask = dec_mask * make_history_mask(label.shape[0])
+    elif task == "language_modeling":
+        # TODO make properly for language modeling
+        label = np.array(7*[0], dtype=np.int64)
+        # loss_mask = np.array(7*[0], dtype=np.int64)
+        loss_mask = (sample != pad_id).astype(np.int64)
+        dec_mask = [np.ones((sample[0].shape[0]+2, sample[0].shape[0]+2), dtype=np.int64) for mask in enc_mask]
+        for mask in dec_mask:
+            mask[2:,2:] = mask[2:,2:] * make_history_mask(sample[0].shape[0])
 
+    ## Mask for the second encoder and enc_dec_mask are built in collate_fn in data_sampler
     train_sample = {
         "docs_enc": flattened_sample,
         "sent_nums": num_sent,
@@ -165,8 +179,8 @@ def make_attention_mask(source_block, target_block, pad_id):
     return mask
 
 
-def make_history_mask(block):
-    length = block.shape[0]
+def make_history_mask(length):
+    # length = block.shape[0]
     arange = np.arange(length)
     history_mask = (
         arange[

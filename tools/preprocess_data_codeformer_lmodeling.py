@@ -14,7 +14,6 @@ import glob
 import torch
 import multiprocessing
 from codeformer_utils.vendor.codeformer import (
-    AstCodeSplitter,
     MyTextTree,
     transform_sequence_according_to_split_with_begin_end_tokens
 )

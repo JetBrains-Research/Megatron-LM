@@ -114,11 +114,11 @@ def get_batch(data_iterator):
 def loss_func(loss_mask, output):
     result_dict_ = {}
     if isinstance(output, tuple):
-        # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
         lm_loss, result_dict_ = output
     else:
         lm_loss = output
 
+    # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
     loss_mask = loss_mask[:,1:]
     lm_loss_ = lm_loss.float()
     lm_loss = torch.sum(lm_loss_.view(-1) * loss_mask.reshape(-1)) / loss_mask.sum()

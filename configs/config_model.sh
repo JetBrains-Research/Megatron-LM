@@ -9,8 +9,8 @@ MODEL_ARGS="
     --use-flash-attn \
     --position-embedding-type rope\
     --ffn-hidden-size 2048 \
-    --micro-batch-size 40 \
-    --global-batch-size 160 \
+    --micro-batch-size 8 \
+    --global-batch-size 120 \
     --optimizer sgd \
     --lr 0.01 \
     --min-lr 0.01 \
@@ -23,6 +23,17 @@ MODEL_ARGS="
     --fp16
     --vocab-extra-ids 100
 "
+
+#    --lr 0.00001 \
+#    --min-lr 0.000001 \
+#    --lr-warmup-init 0.0000001\
+
+#    --optimizer SGD \
+#    --lr 0.01 \
+#    --min-lr 0.01 \
+#    --lr-warmup-init 0.0033\
+#    --lr-warmup-fraction .99 \
+
 #     --fp16 \
 #    --kv-channels 64 \
 #     --epochs 2 \
@@ -30,9 +41,9 @@ MODEL_ARGS="
 
 # Note, that finally label would be (max-label-length+2) due to BOS and EOS tokens.
 DATA_PROC_ARGS="
---max-context-length 4096 \
---max-sent-num 384 \
+--max-context-length 2048 \
+--max-sent-num 128 \
 --max-label-length 5 \
 --max-sent-length 16 \
---language java \
+--language python \
 "

@@ -6,9 +6,9 @@ source /workspace/megatron/configs/config_data.sh
 
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 # export PATH=/workspace/megatron
-DATA_PROCESSED_PATH="${DATA_PATH}/processed/train_code_sentence" # .._text_sentence
+DATA_PROCESSED_PATH="${DATA_PATH}/processed_wikitext/train_text_sentence"
 
-GPUS_PER_NODE=4
+GPUS_PER_NODE=3
 # Change for multinode config
 MASTER_ADDR=localhost
 MASTER_PORT=6000
@@ -33,12 +33,11 @@ DATA_PATHS="
 export WANDB_DISABLE_GIT=true
 export WANDB_BASE_URL="https://jetbrains.wandb.io"
 
-export CUDA_VISIBLE_DEVICES=2,3,6,7
-
+export CUDA_VISIBLE_DEVICES=3,4,7
 torchrun $DISTRIBUTED_ARGS pretrain_codeformer.py \
     --codeformer\
     --separate-split-files \
-    --task method_naming \
+    --task language_modeling \
     $DATA_PATHS \
     $MODEL_ARGS \
     $DATA_ARGS \

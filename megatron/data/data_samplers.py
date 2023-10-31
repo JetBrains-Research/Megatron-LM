@@ -9,14 +9,15 @@ import numpy as np
 from torch.utils.data import Dataset
 from megatron import get_args
 from megatron.core import mpu
-from megatron.data.codeformer_dataset import make_attention_mask
+from megatron.data.codeformer_dataset import make_attention_mask, make_history_mask
 from torch.utils.data.dataloader import default_collate
 from einops import rearrange
 
 import pydevd_pycharm
 
-def merge_batch(batch):
+def merge_batch(batch, task):
     collated_dict = {}
+    # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
     for data_dict in batch:
         for key, value in data_dict.items():
             if isinstance(value, int):
@@ -28,14 +29,20 @@ def merge_batch(batch):
             else:
                 collated_dict[key] = [tensor_value]
     for key, value in collated_dict.items():
-        if key == "docs_enc" or key == "enc_mask":
+        if key == "docs_enc":
             collated_dict[key] = torch.concat(value, dim=0)
+        elif task=="language_modeling" and (key == "loss_mask" or key == "dec_mask"):
+            collated_dict[key] = torch.concat(value, dim=0)
+        elif task=="method_naming" and key == "enc_mask":
+            collated_dict[key] = torch.concat(value, dim=0)
+        elif task=="language_modeling" and key == "enc_mask":
+            collated_dict[key] = torch.tensor([0])
         else:
             collated_dict[key] = torch.stack(value)
 
     return collated_dict
 
-def collate_fn(batch, max_sent_len, pad_id=0):
+def collate_fn(batch, max_sent_len, task, pad_id=0):
 
     # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
     max_num_sent = max([item['sent_nums'] for item in batch])
@@ -44,10 +51,14 @@ def collate_fn(batch, max_sent_len, pad_id=0):
         item["docs_enc"] = rearrange(item["docs_enc"], "(s t) -> s t", t=max_sent_len)
         # building masks
         sent_flags = np.array(item['sent_nums'] * [1] + (max_num_sent - item['sent_nums']) * [pad_id], dtype=np.int64)
+        # TODO we can pass something empty to enc_dec_mask to speed up
         item["enc_dec_mask"] = make_attention_mask(item['labels'], sent_flags, pad_id)
+        # TODO Make this mask causal!
         item["sent_mask"] = make_attention_mask(sent_flags, sent_flags, pad_id)
+        if task == "language_modeling":
+            item["sent_mask"] = item["sent_mask"]*make_history_mask(max_num_sent)
         batch_processed.append(item)
-    batch_processed = merge_batch(batch_processed)
+    batch_processed = merge_batch(batch_processed, task)
     return batch_processed
 
 def build_pretraining_data_loader(dataset, consumed_samples):
@@ -79,7 +90,7 @@ def build_pretraining_data_loader(dataset, consumed_samples):
 
     # Torch dataloader.
     if args.codeformer:
-        coll_fn = lambda batch: collate_fn(batch, max_sent_len=args.max_sent_length+2, pad_id=args.pad_id)
+        coll_fn = lambda batch: collate_fn(batch, max_sent_len=args.max_sent_length+2, task=args.task, pad_id=args.pad_id)
     else:
         coll_fn = None
     return torch.utils.data.DataLoader(dataset,

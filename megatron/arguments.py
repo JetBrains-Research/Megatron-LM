@@ -187,12 +187,14 @@ def validate_args(args, defaults={}):
 
     # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
     if args.separate_split_files:
-        _, _, args.test_samples = get_total_samples(args.data_path[0], args.dataset_size_file, separate_split_files=True)
+        _, val_samples, args.test_samples = get_total_samples(args.data_path[0], args.dataset_size_file, separate_split_files=True)
     else:
         total_samples = get_total_samples(args.data_path[0], args.dataset_size_file)
-        _, _, args.test_samples = get_train_valid_test_sizes(args.split, total_samples)
+        _, val_samples, args.test_samples = get_train_valid_test_sizes(args.split, total_samples)
 
     if args.eval_iters_samples:
+        if val_samples < args.eval_iters_samples:
+            args.eval_iters_samples = val_samples
         args.eval_iters = args.eval_iters_samples//args.global_batch_size
     else:
         args.eval_iters_samples = args.eval_iters*args.global_batch_size
