@@ -10,17 +10,19 @@ MODEL_ARGS="
     --position-embedding-type rope\
     --ffn-hidden-size 2048 \
     --micro-batch-size 8 \
+    --global-batch-size 128 \
     --optimizer sgd \
-    --lr 0.0001 \
-    --min-lr 0.0001 \
-    --lr-warmup-init 0.0001\
+    --lr 0.01 \
+    --min-lr 0.01 \
+    --lr-warmup-init 0.0033\
     --lr-warmup-fraction .99 \
     --sgd-momentum 0.95 \
     --nesterov \
     --weight-decay 1e-4 \
     --clip-grad 5.0 \
-    --fp16
+    --bf16
     --vocab-extra-ids 100
+    --use-flash-attn
 "
 
 #    --optimizer adam \

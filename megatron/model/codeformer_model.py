@@ -121,7 +121,6 @@ class CodeformerModel(MegatronModule):
     ):
 
         # Converting the attention masks to proper parameter settings
-        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
 
         enc_mask, sent_mask, enc_dec_mask, dec_mask = extended_attention_mask(
             [enc_mask, sent_mask, enc_dec_mask, dec_mask]
@@ -151,6 +150,7 @@ class CodeformerModel(MegatronModule):
             tokentype_ids=tokentype_ids,
             enc_hidden_states=enc_hidden_states,
         )
+        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
         # self.causality_check(lm_fun, encoder_input_ids, sent=2, tok=3, k=0, add_id = 0)
 
         if self.post_process:

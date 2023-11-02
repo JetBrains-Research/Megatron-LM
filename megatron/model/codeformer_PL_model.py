@@ -4,6 +4,7 @@
 
 import torch
 from einops import rearrange
+from torch.nn.parameter import Parameter
 
 from megatron import get_args
 from megatron.core import mpu, tensor_parallel
@@ -30,14 +31,35 @@ def reshape_aggregated(encoder_agg, sent_nums, max_sent_num_batch, b):
 
     return encoder_agg_reshape
 
-def build_decoder_input(agg_chunk_embed, input_embeddings, sent_nums, b):
+def build_decoder_input(agg_chunk_embed, input_embeddings, pad_embed, sent_nums, b):
     # TODO CHECK for first sentence I prepend zero vector as aggregated vector
     # decoder_input collects all chunks representations from second encoder.
     # We store them without splitting on batches
     # Prepend with 0 vector to run model on first chunk
 
-    pad_enc = torch.zeros((1, agg_chunk_embed.size(-1)), device=agg_chunk_embed.device)
-    decoder_input = [pad_enc]
+    # decoder input are input embeddings for each chunck, prepended by representation of previous chunck
+    # size: (1+chunck_length, num_chunks_in_the_batch, hid_dim)
+    decoder_input = torch.zeros((input_embeddings.size(0)+1, input_embeddings.size(1)+1, input_embeddings.size(-1)), device=input_embeddings.device)
+    decoder_input[1:, 1:] = input_embeddings
+    decoder_input[0,:] = pad_embed
+    start_idx = 1
+    for i in range(b):
+        size = sent_nums[i].item()
+        end_idx = start_idx + size
+        decoder_input[0,start_idx:end_idx] = agg_chunk_embed[:size, i]
+        start_idx = end_idx
+
+    return decoder_input[:,:-1]
+
+def build_decoder_input_2(agg_chunk_embed, input_embeddings, pad_embed, sent_nums, b):
+    # TODO CHECK for first sentence I prepend zero vector as aggregated vector
+    # decoder_input collects all chunks representations from second encoder.
+    # We store them without splitting on batches
+    # Prepend with 0 vector to run model on first chunk
+
+    # pad_enc = torch.zeros((1, agg_chunk_embed.size(-1)), device=agg_chunk_embed.device)
+    decoder_input = [pad_embed.unsqueeze(0)]
+    #pad_embed.unsqueeze(0)
     for i in range(b):
         size = sent_nums[i].item()
         decoder_input.append(agg_chunk_embed[:size, i, :])
@@ -873,6 +895,8 @@ class СodeformerLanguageModeling(MegatronModule):
             post_process=self.post_process,
         )
         self._decoder_key = "decoder"
+        # TODO what is better way to initialize this parameter
+        self.dec_agg_pad = Parameter(torch.randn(args.hidden_size))
 
         if self.post_process:
             # Pooler.
@@ -952,13 +976,13 @@ class СodeformerLanguageModeling(MegatronModule):
         b = sent_nums.size(0)
         max_sent_num_batch = sent_mask.size(2)
 
-        ones = torch.ones_like(enc_input_ids[:,0:1])
         enc_position_ids = self.get_position_ids(enc_input_ids)
 
         # TODO decide what to do with dec_position_ids
         dec_position_ids = self.get_position_ids(dec_input_ids)
         if self.pre_process:
             input_embeddings = self.embedding(enc_input_ids, enc_position_ids, tokentype_ids=tokentype_ids)
+            # pad_embed = self.embedding(torch.tensor([0], device="cuda"), torch.tensor([0], device="cuda"))[:, 0]
         else:
             input_embeddings = None
 
@@ -998,7 +1022,7 @@ class СodeformerLanguageModeling(MegatronModule):
 
             # decoder input are input embeddings for each chunk, prepended by representation of previous chunk
             # size: (1+chunk_length, num_chunks_in_the_batch, hid_dim)
-            decoder_input = build_decoder_input(decoder_input, input_embeddings, sent_nums, b)
+            decoder_input = build_decoder_input_2(decoder_input, input_embeddings, self.dec_agg_pad, sent_nums, b)
             # input into cross-attn are encoded tokens from previous chunk
             # we add zeros as cross-attn input for the first chunk
             # TODO input pad_id here
@@ -1007,22 +1031,22 @@ class СodeformerLanguageModeling(MegatronModule):
             # Making enc-dec mask
             enc_dec_mask = build_enc_dec_mask(enc_input_ids)
 
+            # dec_mask[0, 0, :, 0] = True
             # output = self.decoder(
-            #     decoder_input[1:],
+            #     decoder_input,
             #     # input_embeddings,
-            #     attention_mask=dec_mask[:,:,1:,1:],
-            #     encoder_output=decoder_input[1:].to(torch.float16),# 0*encoder_output,#
-            #     enc_dec_attn_mask=dec_mask[:,:,1:,1:],#enc_dec_mask,
+            #     attention_mask=dec_mask,
+            #     encoder_output=decoder_input.to(torch.float16),#decoder_input.to(torch.float16),# 0*encoder_output,#
+            #     enc_dec_attn_mask=dec_mask,#enc_dec_mask,
             #     inference_params=inference_params,
-            #     rotary_pos_emb=rotary_pos_emb_dec[1:],
+            #     rotary_pos_emb=rotary_pos_emb_dec,
             # )
-
             output = self.decoder(
                 decoder_input,
                 # input_embeddings,
                 attention_mask=dec_mask,
-                encoder_output=decoder_input.to(torch.float16),#decoder_input.to(torch.float16),# 0*encoder_output,#
-                enc_dec_attn_mask=dec_mask,#enc_dec_mask,
+                encoder_output=encoder_output,
+                enc_dec_attn_mask=enc_dec_mask,
                 inference_params=inference_params,
                 rotary_pos_emb=rotary_pos_emb_dec,
             )
