@@ -1018,10 +1018,10 @@ class СodeformerLanguageModeling(MegatronModule):
             # )
 
             output = self.decoder(
-                # decoder_input,
-                input_embeddings,
+                decoder_input,
+                # input_embeddings,
                 attention_mask=dec_mask,
-                encoder_output=input_embeddings.to(torch.float16),#decoder_input.to(torch.float16),# 0*encoder_output,#
+                encoder_output=decoder_input.to(torch.float16),#decoder_input.to(torch.float16),# 0*encoder_output,#
                 enc_dec_attn_mask=dec_mask,#enc_dec_mask,
                 inference_params=inference_params,
                 rotary_pos_emb=rotary_pos_emb_dec,
