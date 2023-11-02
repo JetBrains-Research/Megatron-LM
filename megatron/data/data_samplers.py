@@ -29,14 +29,10 @@ def merge_batch(batch, task):
             else:
                 collated_dict[key] = [tensor_value]
     for key, value in collated_dict.items():
-        if key == "docs_enc":
+        if key == "docs_enc" or key == "enc_mask":
             collated_dict[key] = torch.concat(value, dim=0)
         elif task=="language_modeling" and (key == "loss_mask" or key == "dec_mask"):
             collated_dict[key] = torch.concat(value, dim=0)
-        elif task=="method_naming" and key == "enc_mask":
-            collated_dict[key] = torch.concat(value, dim=0)
-        elif task=="language_modeling" and key == "enc_mask":
-            collated_dict[key] = torch.tensor([0])
         else:
             collated_dict[key] = torch.stack(value)
 
@@ -53,7 +49,6 @@ def collate_fn(batch, max_sent_len, task, pad_id=0):
         sent_flags = np.array(item['sent_nums'] * [1] + (max_num_sent - item['sent_nums']) * [pad_id], dtype=np.int64)
         # TODO we can pass something empty to enc_dec_mask to speed up
         item["enc_dec_mask"] = make_attention_mask(item['labels'], sent_flags, pad_id)
-        # TODO Make this mask causal!
         item["sent_mask"] = make_attention_mask(sent_flags, sent_flags, pad_id)
         if task == "language_modeling":
             item["sent_mask"] = item["sent_mask"]*make_history_mask(max_num_sent)

@@ -75,7 +75,7 @@ class CodeformerDataset(torch.utils.data.Dataset):
         return self.samples_mapping.shape[0]
 
     def __getitem__(self, idx):
-        # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
+        # pydevd_pycharm.settrace("localhost", ports=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
         doc_index = self.samples_mapping[idx]
         sent_idx_start = self.indexed_dataset.doc_idx[doc_index]
         sent_idx_end = self.indexed_dataset.doc_idx[doc_index + 1]
@@ -91,9 +91,10 @@ class CodeformerDataset(torch.utils.data.Dataset):
             sample.append(sentence)
 
         # Warmup - added first maximal size batch to be sure that all other batche will fit into the model
-        if self.first < 2*self.args.micro_batch_size:
-            sample = sample + (self.max_sent_num-len(sample))*[(self.args.max_sent_length+2)*[1]]
-            self.first += 1
+        # TODO turn on warmup
+        # if self.first < 2*self.args.micro_batch_size:
+        #     sample = sample + (self.max_sent_num-len(sample))*[(self.args.max_sent_length+2)*[1]]
+        #     self.first += 1
 
         return build_training_sample(
             self.task,
@@ -150,9 +151,11 @@ def build_training_sample(
         label = np.array(7*[0], dtype=np.int64)
         # loss_mask = np.array(7*[0], dtype=np.int64)
         loss_mask = (sample != pad_id).astype(np.int64)
-        dec_mask = [np.ones((sample[0].shape[0]+2, sample[0].shape[0]+2), dtype=np.int64) for mask in enc_mask]
+        dec_mask = [np.ones((sample[0].shape[0]+1, sample[0].shape[0]+1), dtype=np.int64) for mask in enc_mask]
         for mask in dec_mask:
-            mask[2:,2:] = mask[2:,2:] * make_history_mask(sample[0].shape[0])
+            mask[1:,1:] = mask[1:,1:] * make_history_mask(sample[0].shape[0])
+            mask[:1, 1:] = 0
+
 
     ## Mask for the second encoder and enc_dec_mask are built in collate_fn in data_sampler
     train_sample = {

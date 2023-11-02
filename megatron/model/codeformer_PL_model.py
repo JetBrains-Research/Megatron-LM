@@ -30,16 +30,39 @@ def reshape_aggregated(encoder_agg, sent_nums, max_sent_num_batch, b):
 
     return encoder_agg_reshape
 
-def build_decoder_input(encoder2_output, input_embeddings, sent_nums, b):
+def build_decoder_input(agg_chunk_embed, input_embeddings, sent_nums, b):
     # TODO CHECK for first sentence I prepend zero vector as aggregated vector
-    pad_enc = torch.zeros((1, encoder2_output.size(-1)), device=encoder2_output.device)
+    # decoder_input collects all chunks representations from second encoder.
+    # We store them without splitting on batches
+    # Prepend with 0 vector to run model on first chunk
+
+    pad_enc = torch.zeros((1, agg_chunk_embed.size(-1)), device=agg_chunk_embed.device)
     decoder_input = [pad_enc]
     for i in range(b):
         size = sent_nums[i].item()
-        decoder_input.append(encoder2_output[:size, i, :])
+        decoder_input.append(agg_chunk_embed[:size, i, :])
+    # size: (1+num_chunks_in_the_batch, hid_dim)
     decoder_input = torch.cat(decoder_input, dim=0)
-    decoder_input = torch.cat((input_embeddings[0:1], decoder_input[:-1].unsqueeze(0), input_embeddings), dim=0)
+    # decoder input are input embeddings for each chunck, prepended by representation of previous chunck
+    # size: (1+chunck_length, num_chunks_in_the_batch, hid_dim)
+
+    decoder_input = torch.cat((decoder_input[:-1].unsqueeze(0), input_embeddings), dim=0)
     return decoder_input
+
+def build_enc_dec_mask(enc_input_ids):
+    ones = torch.ones(enc_input_ids.size(0), 1, device=enc_input_ids.device, dtype=torch.int64)
+    ones_pre = torch.ones(1, enc_input_ids.size(1), device=enc_input_ids.device, dtype=torch.int64)
+    # dec_input_ids - represents non-pad IDs of the input chunks, prepended by representation chunk
+    # TODO. Assert that pad_id is not 1
+    dec_input_ids = torch.cat((ones, enc_input_ids), dim=1)
+    # TODO, think about the mask here
+    # enc_input_ids - represents non-pad IDs of the cross-attn chunks (shifted),
+    # prepended by zero chunk for first chunk decoding
+    enc_input_ids_ = torch.cat((ones_pre, enc_input_ids), dim=0)[:-1]
+    enc_dec_mask = ~((enc_input_ids_.unsqueeze(1) != 0) * (dec_input_ids.unsqueeze(2) != 0))
+    enc_dec_mask = enc_dec_mask.unsqueeze(1)
+
+    return enc_dec_mask
 
 def parallel_lm_logits(input_, word_embeddings_weight, parallel_output, bias=None):
     """LM logits using word embedding weights."""
@@ -925,10 +948,14 @@ class СodeformerLanguageModeling(MegatronModule):
     ):
 
         # Encoder embedding.
+        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
         b = sent_nums.size(0)
         max_sent_num_batch = sent_mask.size(2)
 
+        ones = torch.ones_like(enc_input_ids[:,0:1])
         enc_position_ids = self.get_position_ids(enc_input_ids)
+
+        # TODO decide what to do with dec_position_ids
         dec_position_ids = self.get_position_ids(dec_input_ids)
         if self.pre_process:
             input_embeddings = self.embedding(enc_input_ids, enc_position_ids, tokentype_ids=tokentype_ids)
@@ -940,15 +967,13 @@ class СodeformerLanguageModeling(MegatronModule):
         if self.use_rotary_position_embeddings:
             if inference_params is not None:
                 # TODO FINAL may be for inference something should be changed
-                # rotary_pos_emb = self.rotary_pos_emb(inference_params.max_sequence_length)
                 rotary_pos_emb_1 = self.rotary_pos_emb_1(self.max_sent_length)
                 rotary_pos_emb_2 = self.rotary_pos_emb_2(max_sent_num_batch)
-                rotary_pos_emb_dec = self.rotary_pos_emb_dec(self.max_sent_length+2)
+                rotary_pos_emb_dec = self.rotary_pos_emb_dec(self.max_sent_length+1)
             else:
                 rotary_pos_emb_1 = self.rotary_pos_emb_1(self.max_sent_length)
                 rotary_pos_emb_2 = self.rotary_pos_emb_2(max_sent_num_batch)
-                rotary_pos_emb_dec = self.rotary_pos_emb_dec(self.max_sent_length+2)
-        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
+                rotary_pos_emb_dec = self.rotary_pos_emb_dec(self.max_sent_length+1)
         if enc_hidden_states is None:
             # (sent_len, sent_num, d)  = (b s), sent_num, d
             encoder_output = self.encoder_1(
@@ -971,36 +996,44 @@ class СodeformerLanguageModeling(MegatronModule):
                 rotary_pos_emb=rotary_pos_emb_2,
             )
 
-            # def build_decoder_input(input_embeddings, encoder_agg, sent_nums, max_sent_num_batch, b):
-            # reshaping and concat sen_len+2 (b s) d
+            # decoder input are input embeddings for each chunk, prepended by representation of previous chunk
+            # size: (1+chunk_length, num_chunks_in_the_batch, hid_dim)
             decoder_input = build_decoder_input(decoder_input, input_embeddings, sent_nums, b)
-            pad_enc1_out = torch.zeros_like(encoder_output[:, 0:1, :])
-            encoder_output = torch.cat((encoder_output, pad_enc1_out), dim=1)[:,:-1]
+            # input into cross-attn are encoded tokens from previous chunk
+            # we add zeros as cross-attn input for the first chunk
             # TODO input pad_id here
-            ones = torch.ones(enc_input_ids.size(0), 2, device=enc_input_ids.device, dtype=torch.int64)
-            ones_pre = torch.ones(1, enc_input_ids.size(1), device=enc_input_ids.device, dtype=torch.int64)
-            # Concatenate the ones to x along dimension 1
-            dec_input_ids = torch.cat((ones, enc_input_ids), dim=1)
-            # TODO, think about the mask here
-            enc_input_ids = torch.cat((ones_pre, enc_input_ids), dim=0)
-            enc_dec_mask = ~((enc_input_ids[:-1].unsqueeze(1) != 0) * (dec_input_ids.unsqueeze(2) != 0))
-            enc_dec_mask = enc_dec_mask.unsqueeze(1)
+            pad_encoder_output = torch.zeros_like(encoder_output[:, 0:1, :])
+            encoder_output = torch.cat((pad_encoder_output, encoder_output), dim=1)[:,:-1]
+            # Making enc-dec mask
+            enc_dec_mask = build_enc_dec_mask(enc_input_ids)
+
+            # output = self.decoder(
+            #     decoder_input[1:],
+            #     # input_embeddings,
+            #     attention_mask=dec_mask[:,:,1:,1:],
+            #     encoder_output=decoder_input[1:].to(torch.float16),# 0*encoder_output,#
+            #     enc_dec_attn_mask=dec_mask[:,:,1:,1:],#enc_dec_mask,
+            #     inference_params=inference_params,
+            #     rotary_pos_emb=rotary_pos_emb_dec[1:],
+            # )
 
             output = self.decoder(
-                decoder_input,
+                # decoder_input,
+                input_embeddings,
                 attention_mask=dec_mask,
-                encoder_output=encoder_output,
-                enc_dec_attn_mask=enc_dec_mask,
+                encoder_output=input_embeddings.to(torch.float16),#decoder_input.to(torch.float16),# 0*encoder_output,#
+                enc_dec_attn_mask=dec_mask,#enc_dec_mask,
                 inference_params=inference_params,
                 rotary_pos_emb=rotary_pos_emb_dec,
             )
+
         else:
             output = enc_hidden_states.to(input_embeddings.dtype)
 
         # output_enc_hidden refers to when we just need the encoder's
         # output. For example, it is helpful to compute
         # similarity between two sequences by average pooling
-        return output[2:]
+        return output[1:]
 
     def state_dict_for_save_checkpoint(self, prefix="", keep_vars=False):
         """For easy load."""
@@ -1077,3 +1110,24 @@ class СodeformerLanguageModeling(MegatronModule):
         if self.add_decoder:
             assert "decoder" in state_dict, "No decoder weights in the checkpoint"
             self.decoder.load_state_dict(state_dict[self._decoder_key], strict=strict)
+
+# self.decoder.eval()
+# decoder_input_new = decoder_input.clone()
+# decoder_input_new[3,2] = decoder_input_new[3,2]*0.5
+# out_0 = self.decoder(
+#     decoder_input,
+#     attention_mask=dec_mask,
+#     encoder_output=encoder_output,
+#     enc_dec_attn_mask=enc_dec_mask,
+#     inference_params=inference_params,
+#     rotary_pos_emb=rotary_pos_emb_dec,
+# )
+# out_2 = self.decoder(
+#     decoder_input_new,
+#     attention_mask=dec_mask,
+#     encoder_output=encoder_output,
+#     enc_dec_attn_mask=enc_dec_mask,
+#     inference_params=inference_params,
+#     rotary_pos_emb=rotary_pos_emb_dec,
+# )
+# torch.norm(out_2[2, 2] - out_0[2, 2], p=1).item()

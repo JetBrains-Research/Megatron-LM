@@ -335,7 +335,8 @@ def validate_args(args, defaults={}):
     if True:# args.codeformer:
         args.max_position_embeddings = args.max_sent_length + 2
         # args.decoder_seq_length = 18
-
+    if args.task == "language_modeling":
+        args.max_label_length = args.max_sent_length + 1
     if args.seq_length is not None:
         assert args.max_position_embeddings >= args.seq_length
     if args.decoder_seq_length is not None:

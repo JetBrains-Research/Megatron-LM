@@ -12,6 +12,7 @@ from megatron.model.codeformer_PL_model import get_language_model
 from .module import MegatronModule
 from megatron import get_tokenizer
 
+from functools import partial
 import pydevd_pycharm
 
 
@@ -94,6 +95,17 @@ class CodeformerModel(MegatronModule):
         """See megatron.model.transformer.set_input_tensor()"""
         self.language_model.set_input_tensor(input_tensor)
 
+    def causality_check(self, lm_fun, encoder_input_ids, sent, tok, k=0, add_id=10):
+        encoder_input_ids_new = encoder_input_ids.clone()
+        self.language_model.eval()
+
+        decoder_output_0 = lm_fun(encoder_input_ids)
+        encoder_input_ids_new[sent,tok] += add_id
+        decoder_output_2 = lm_fun(encoder_input_ids_new)
+        diff = [torch.norm(decoder_output_2[j,sent-k] - decoder_output_0[j,sent-k], p=1).item()/len(decoder_output_2[1,2]) for j in range(18)]
+        self.language_model.train()
+        return diff
+
     def forward(
         self,
         encoder_input_ids,
@@ -115,6 +127,19 @@ class CodeformerModel(MegatronModule):
             [enc_mask, sent_mask, enc_dec_mask, dec_mask]
         )
 
+        # lm_fun = partial(
+        #     self.language_model,
+        #     dec_input_ids=decoder_input_ids,
+        #     sent_nums = sent_nums,
+        #     enc_mask = enc_mask,
+        #     sent_mask = sent_mask,
+        #     enc_dec_mask = enc_dec_mask,
+        #     dec_mask = dec_mask,
+        #     tokentype_ids = tokentype_ids,
+        #     enc_hidden_states = enc_hidden_states,
+        # )
+        #
+        # decoder_output = lm_fun(encoder_input_ids)
         decoder_output = self.language_model(
             encoder_input_ids,
             decoder_input_ids,
@@ -126,11 +151,13 @@ class CodeformerModel(MegatronModule):
             tokentype_ids=tokentype_ids,
             enc_hidden_states=enc_hidden_states,
         )
+        # self.causality_check(lm_fun, encoder_input_ids, sent=2, tok=3, k=0, add_id = 0)
 
         if self.post_process:
             # Output. [s, b, h]
             if self.task == "language_modeling":
                 lm_labels = encoder_input_ids
+                # pass
             lm_logits = self.lm_head(decoder_output, self.shared_embedding_or_output_weight())
 
             if lm_labels is None:

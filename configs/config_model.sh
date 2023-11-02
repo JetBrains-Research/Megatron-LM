@@ -10,11 +10,10 @@ MODEL_ARGS="
     --position-embedding-type rope\
     --ffn-hidden-size 2048 \
     --micro-batch-size 8 \
-    --global-batch-size 120 \
     --optimizer sgd \
-    --lr 0.01 \
-    --min-lr 0.01 \
-    --lr-warmup-init 0.0033\
+    --lr 0.0001 \
+    --min-lr 0.0001 \
+    --lr-warmup-init 0.0001\
     --lr-warmup-fraction .99 \
     --sgd-momentum 0.95 \
     --nesterov \
@@ -24,11 +23,13 @@ MODEL_ARGS="
     --vocab-extra-ids 100
 "
 
+#    --optimizer adam \
 #    --lr 0.00001 \
 #    --min-lr 0.000001 \
 #    --lr-warmup-init 0.0000001\
+#    --lr-warmup-fraction .05 \
 
-#    --optimizer SGD \
+#    --optimizer sgd \
 #    --lr 0.01 \
 #    --min-lr 0.01 \
 #    --lr-warmup-init 0.0033\

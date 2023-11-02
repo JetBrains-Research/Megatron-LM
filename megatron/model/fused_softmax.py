@@ -198,7 +198,8 @@ class FusedScaleMaskSoftmax(nn.Module):
         # TODO here can be problem with a mask.
         #  If some row in attn matrix is masked, this row aquires equal probabilities, not zero.
         mask_output = self.mask_func(input, mask) if mask is not None else input
-        probs = torch.nn.Softmax(dim=-1)(mask_output)
+        # mask_zeros = mask.all(dim=-1, keepdim=True)
+        probs = torch.nn.Softmax(dim=-1)(mask_output)#*(~mask_zeros)
 
         if self.input_in_float16 and self.softmax_in_fp32:
             if self.input_in_fp16:

@@ -121,7 +121,7 @@ def loss_func(loss_mask, output):
     # pydevd_pycharm.settrace("localhost", port=PORT_DEBUG, stdoutToServer=True, stderrToServer=True)
     loss_mask = loss_mask[:,1:]
     lm_loss_ = lm_loss.float()
-    lm_loss = torch.sum(lm_loss_.view(-1) * loss_mask.reshape(-1)) / loss_mask.sum()
+    lm_loss = torch.sum(lm_loss_.view(-1) * loss_mask.reshape(-1)) / loss_mask.sum()    # lm_loss = torch.mean(lm_loss_)
 
     loss = lm_loss
     averaged_losses = average_losses_across_data_parallel_group([lm_loss])
