@@ -1321,6 +1321,8 @@ class ParallelTransformer(MegatronModule):
                     seq_length = args.max_sent_length + 2
                 if enc_num == 2:
                     seq_length = args.max_sent_num
+                if enc_num == 3:
+                    seq_length = args.max_label_length + 2
             else:
                 seq_length = args.max_label_length + 2
         else:
