@@ -453,17 +453,17 @@ class СodeformerMethodNaming(MegatronModule):
 
             self._embedding_key = "embedding"
 
-            ## TODO DISCUSS decide shouldn't we use shared emb
-            self.embedding_dec = Embedding(
-                hidden_size=self.hidden_size,
-                vocab_size=args.padded_vocab_size,
-                max_sequence_length=args.max_position_embeddings,
-                embedding_dropout_prob=args.hidden_dropout,
-                config=config,
-                num_tokentypes=self.num_tokentypes,
-                embedding_weights_in_fp32=args.embedding_weights_in_fp32,
-            )
-            self._embedding_dec_key = "embedding_dec"
+            # ## TODO DISCUSS decide shouldn't we use shared emb
+            # self.embedding_dec = Embedding(
+            #     hidden_size=self.hidden_size,
+            #     vocab_size=args.padded_vocab_size,
+            #     max_sequence_length=args.max_position_embeddings,
+            #     embedding_dropout_prob=args.hidden_dropout,
+            #     config=config,
+            #     num_tokentypes=self.num_tokentypes,
+            #     embedding_weights_in_fp32=args.embedding_weights_in_fp32,
+            # )
+            # self._embedding_dec_key = "embedding_dec"
 
         # Rotary positional embeddings
         self.use_rotary_position_embeddings = args.position_embedding_type == "rope"
@@ -691,9 +691,9 @@ class СodeformerMethodNaming(MegatronModule):
                 prefix=prefix, keep_vars=keep_vars
             )
 
-            state_dict_[self._embedding_dec_key] = self.embedding_dec.state_dict_for_save_checkpoint(
-                prefix=prefix, keep_vars=keep_vars
-            )
+            # state_dict_[self._embedding_dec_key] = self.embedding_dec.state_dict_for_save_checkpoint(
+            #     prefix=prefix, keep_vars=keep_vars
+            # )
         state_dict_[self._encoder_1_key] = self.encoder_1.state_dict_for_save_checkpoint(
             prefix=prefix, keep_vars=keep_vars
         )
@@ -725,11 +725,11 @@ class СodeformerMethodNaming(MegatronModule):
         # Embedding.
         if self.pre_process:
             assert self._embedding_key in state_dict, "No embedding weights in the checkpoint!"
-            assert self._embedding_dec_key in state_dict, "No embedding for decoder weights in the checkpoint!"
+            # assert self._embedding_dec_key in state_dict, "No embedding for decoder weights in the checkpoint!"
             state_dict_ = state_dict[self._embedding_key]
-            state_dict_dec_ = state_dict[self._embedding_dec_key]
+            # state_dict_dec_ = state_dict[self._embedding_dec_key]
             self.embedding.load_state_dict(state_dict_, strict=strict)
-            self.embedding_dec.load_state_dict(state_dict_dec_, strict=strict)
+            # self.embedding_dec.load_state_dict(state_dict_dec_, strict=strict)
 
         # Encoder.
         if self.add_encoder:
@@ -787,6 +787,7 @@ class СodeformerLanguageModeling(MegatronModule):
             share_embeddings_and_output_weights=not args.untie_embeddings_and_output_weights
         )
 
+        self.args = args
         self.pre_process = pre_process
         self.post_process = post_process
         self.hidden_size = config.hidden_size
@@ -819,16 +820,16 @@ class СodeformerLanguageModeling(MegatronModule):
             self._embedding_key = "embedding"
 
             ## TODO DISCUSS decide shouldn't we use shared emb
-            self.embedding_dec = Embedding(
-                hidden_size=self.hidden_size,
-                vocab_size=args.padded_vocab_size,
-                max_sequence_length=args.max_position_embeddings,
-                embedding_dropout_prob=args.hidden_dropout,
-                config=config,
-                num_tokentypes=self.num_tokentypes,
-                embedding_weights_in_fp32=args.embedding_weights_in_fp32,
-            )
-            self._embedding_dec_key = "embedding_dec"
+            # self.embedding_dec = Embedding(
+            #     hidden_size=self.hidden_size,
+            #     vocab_size=args.padded_vocab_size,
+            #     max_sequence_length=args.max_position_embeddings,
+            #     embedding_dropout_prob=args.hidden_dropout,
+            #     config=config,
+            #     num_tokentypes=self.num_tokentypes,
+            #     embedding_weights_in_fp32=args.embedding_weights_in_fp32,
+            # )
+            # self._embedding_dec_key = "embedding_dec"
 
         # Rotary positional embeddings
         self.use_rotary_position_embeddings = args.position_embedding_type == "rope"
@@ -885,15 +886,26 @@ class СodeformerLanguageModeling(MegatronModule):
         # for p1, p2 in zip(self.encoder_1.parameters(), self.encoder_2.parameters()):
         #     p2.data = p1.data
 
+        # self.decoder = ParallelTransformer(
+        #     config,
+        #     model_type=ModelType.encoder_and_decoder,
+        #     is_codeformer=True,
+        #     layer_type=LayerType.decoder,
+        #     self_attn_mask_type=self.decoder_attn_mask_type,
+        #     pre_process=self.pre_process,
+        #     post_process=self.post_process,
+        # )
+
         self.decoder = ParallelTransformer(
             config,
             model_type=ModelType.encoder_and_decoder,
+            self_attn_mask_type = AttnMaskType.causal,
             is_codeformer=True,
-            layer_type=LayerType.decoder,
-            self_attn_mask_type=self.decoder_attn_mask_type,
+            enc_num=3,
             pre_process=self.pre_process,
             post_process=self.post_process,
         )
+
         self._decoder_key = "decoder"
         # TODO what is better way to initialize this parameter
         self.dec_agg_pad = Parameter(torch.randn(args.hidden_size))
@@ -982,7 +994,6 @@ class СodeformerLanguageModeling(MegatronModule):
         dec_position_ids = self.get_position_ids(dec_input_ids)
         if self.pre_process:
             input_embeddings = self.embedding(enc_input_ids, enc_position_ids, tokentype_ids=tokentype_ids)
-            # pad_embed = self.embedding(torch.tensor([0], device="cuda"), torch.tensor([0], device="cuda"))[:, 0]
         else:
             input_embeddings = None
 
@@ -1000,6 +1011,7 @@ class СodeformerLanguageModeling(MegatronModule):
                 rotary_pos_emb_dec = self.rotary_pos_emb_dec(self.max_sent_length+1)
         if enc_hidden_states is None:
             # (sent_len, sent_num, d)  = (b s), sent_num, d
+
             encoder_output = self.encoder_1(
                 input_embeddings,
                 attention_mask=enc_mask,
@@ -1026,27 +1038,32 @@ class СodeformerLanguageModeling(MegatronModule):
             # input into cross-attn are encoded tokens from previous chunk
             # we add zeros as cross-attn input for the first chunk
             # TODO input pad_id here
-            pad_encoder_output = torch.zeros_like(encoder_output[:, 0:1, :])
-            encoder_output = torch.cat((pad_encoder_output, encoder_output), dim=1)[:,:-1]
-            # Making enc-dec mask
-            enc_dec_mask = build_enc_dec_mask(enc_input_ids)
-
-            # dec_mask[0, 0, :, 0] = True
+            # pad_encoder_output = torch.zeros_like(encoder_output[:, 0:1, :])
+            # encoder_output = torch.cat((pad_encoder_output, encoder_output), dim=1)[:,:-1]
+            # # Making enc-dec mask
+            # enc_dec_mask = build_enc_dec_mask(enc_input_ids)
+            # This is standard approsch (v01b)
             # output = self.decoder(
             #     decoder_input,
-            #     # input_embeddings,
             #     attention_mask=dec_mask,
-            #     encoder_output=decoder_input.to(torch.float16),#decoder_input.to(torch.float16),# 0*encoder_output,#
-            #     enc_dec_attn_mask=dec_mask,#enc_dec_mask,
+            #     encoder_output=encoder_output,
+            #     enc_dec_attn_mask=enc_dec_mask,
             #     inference_params=inference_params,
             #     rotary_pos_emb=rotary_pos_emb_dec,
             # )
+
+            # This is single decoder
+            # output = self.decoder(
+            #     input_embeddings,
+            #     attention_mask=dec_mask[:, :, 1:,1:],
+            #     inference_params=inference_params,
+            #     rotary_pos_emb=rotary_pos_emb_dec,
+            # )
+
+            # v0.1a
             output = self.decoder(
                 decoder_input,
-                # input_embeddings,
                 attention_mask=dec_mask,
-                encoder_output=encoder_output,
-                enc_dec_attn_mask=enc_dec_mask,
                 inference_params=inference_params,
                 rotary_pos_emb=rotary_pos_emb_dec,
             )
@@ -1070,9 +1087,9 @@ class СodeformerLanguageModeling(MegatronModule):
                 prefix=prefix, keep_vars=keep_vars
             )
 
-            state_dict_[self._embedding_dec_key] = self.embedding_dec.state_dict_for_save_checkpoint(
-                prefix=prefix, keep_vars=keep_vars
-            )
+            # state_dict_[self._embedding_dec_key] = self.embedding_dec.state_dict_for_save_checkpoint(
+            #     prefix=prefix, keep_vars=keep_vars
+            # )
         state_dict_[self._encoder_1_key] = self.encoder_1.state_dict_for_save_checkpoint(
             prefix=prefix, keep_vars=keep_vars
         )
@@ -1104,11 +1121,11 @@ class СodeformerLanguageModeling(MegatronModule):
         # Embedding.
         if self.pre_process:
             assert self._embedding_key in state_dict, "No embedding weights in the checkpoint!"
-            assert self._embedding_dec_key in state_dict, "No embedding for decoder weights in the checkpoint!"
+            # assert self._embedding_dec_key in state_dict, "No embedding for decoder weights in the checkpoint!"
             state_dict_ = state_dict[self._embedding_key]
-            state_dict_dec_ = state_dict[self._embedding_dec_key]
+            # state_dict_dec_ = state_dict[self._embedding_dec_key]
             self.embedding.load_state_dict(state_dict_, strict=strict)
-            self.embedding_dec.load_state_dict(state_dict_dec_, strict=strict)
+            # self.embedding_dec.load_state_dict(state_dict_dec_, strict=strict)
 
         # Encoder.
         if self.add_encoder:

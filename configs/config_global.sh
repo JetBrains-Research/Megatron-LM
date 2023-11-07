@@ -1,7 +1,7 @@
 MEGATRON_PATH="/home/galimzyanov/Megatron-LM"
 DATA_PATH="/home/galimzyanov/data/Megatron/dataset_dev"
 MODEL_PATH="/home/galimzyanov/data/Megatron/model_setup"
-CHECKPOINT_PATH="/home/galimzyanov/data/Megatron/checkpoints_dev"
+CHECKPOINT_PATH="/home/galimzyanov/data/Megatron/checkpoints_v01a"
 LOGGING_PATH="/home/galimzyanov/data/Megatron/logging"
 
 # DATA_FILE="data_dev.jsonl"
