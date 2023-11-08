@@ -7,14 +7,59 @@ import torch
 from megatron import get_args
 from megatron.core import tensor_parallel
 from megatron.model.enums import AttnMaskType
-from megatron.model.codeformer_PL_model import parallel_lm_logits
-from megatron.model.codeformer_PL_model import get_language_model
+from megatron.model.codeformer_common_functions import parallel_lm_logits
+from .codeformer_method_naming import СodeformerMethodNaming
+from .codeformer_language_modeling import СodeformerLanguageModeling
+from .utils import init_method_normal, scaled_init_method_normal
 from .module import MegatronModule
 from megatron import get_tokenizer
 
 from functools import partial
 import pydevd_pycharm
 
+def get_language_model(
+    config,
+    add_pooler,
+    task,
+    add_encoder=True,
+    add_decoder=True,
+    decoder_attn_mask_type=AttnMaskType.causal,
+    pre_process=True,
+    post_process=True,
+):
+    """Build language model and return along with the key to save."""
+    args = get_args()
+    if config.init_method is None:
+        config.init_method = init_method_normal(config.init_method_std)
+
+    if config.output_layer_init_method is None:
+        config.output_layer_init_method = scaled_init_method_normal(config.init_method_std, config.num_layers)
+
+    # Language model.
+    if task == "method_naming":
+        language_model = СodeformerMethodNaming(
+            config,
+            decoder_attn_mask_type=decoder_attn_mask_type,
+            add_encoder=add_encoder,
+            add_decoder=add_decoder,
+            add_pooler=add_pooler,
+            pre_process=pre_process,
+            post_process=post_process,
+        )
+    elif task == "language_modeling":
+        language_model = СodeformerLanguageModeling(
+            config,
+            decoder_attn_mask_type=decoder_attn_mask_type,
+            add_encoder=add_encoder,
+            add_decoder=add_decoder,
+            add_pooler=add_pooler,
+            pre_process=pre_process,
+            post_process=post_process,
+        )
+    # key used for checkpoints.
+    language_model_key = "codeformer_model"
+
+    return language_model, language_model_key
 
 def extended_attention_mask(attention_mask_list):
     def attn_mask_postprocess(attn_mask):
