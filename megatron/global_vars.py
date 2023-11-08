@@ -158,19 +158,33 @@ def _set_tensorboard_writer(args):
 
 import wandb
 
-
 class SummaryWriter:
     def __init__(self):
         # Weights and biases reporting
-        self.args = get_args()
+        self.metrics = dict()
+        self.custom_steps = [""]
         pass
 
-    def add_scalar(self, metric_name, metric_val, iteration):
-        metrics = {
-            metric_name: metric_val,
-        }
+    def add_scalar(self, metric_name, metric_val, add_step=True):
+        if not add_step:
+            self.metrics.update({metric_name: metric_val})
+        else:
+            for step_name in self.custom_steps:
+                self.metrics.update({
+                    f"{metric_name} vs {step_name}": metric_val,
+                })
+
+    def dump(self):
         if is_last_rank():
-            wandb.log(metrics, step=iteration, commit=True)
+            wandb.log(self.metrics, commit=True)
+            self.metrics = dict()
+
+    def init_custom_steps(self, metric_names):
+        if is_last_rank():
+            for step_name in self.custom_steps:
+                wandb.define_metric(step_name)
+                for metric_name in metric_names:
+                    wandb.define_metric(f"{metric_name} vs {step_name}", step_metric=step_name)
 
     def add_text(self, *args, **kwargs):
         pass

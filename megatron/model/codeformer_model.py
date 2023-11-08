@@ -119,7 +119,7 @@ class CodeformerModel(MegatronModule):
         self.language_model, self._language_model_key = get_language_model(
             config=config,
             add_pooler=False,
-            task = self.task,
+            task=self.task,
             add_encoder=add_encoder,
             add_decoder=add_decoder,
             pre_process=self.pre_process,
@@ -195,6 +195,10 @@ class CodeformerModel(MegatronModule):
             tokentype_ids=tokentype_ids,
             enc_hidden_states=enc_hidden_states,
         )
+        # Total tokens in the batch excluding EOS and BOS
+        batch_tokens = encoder_input_ids.count_nonzero().item() - 2*encoder_input_ids.shape[0]
+        self.args.consumed_tokens += batch_tokens
+
         # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
         # self.causality_check(lm_fun, encoder_input_ids, sent=2, tok=3, k=0, add_id = 0)
 

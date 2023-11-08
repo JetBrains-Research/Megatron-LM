@@ -497,6 +497,18 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
     args = get_args()
     timers = get_timers()
     writer = get_tensorboard_writer()
+    # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
+
+    # TODO move it somewhere else
+    log_keys = ['learning-rate', 'batch-size', 'loss-scale', 'world-size', 'grad-norm',
+                'num-zeros', 'params-norm', 'iteration-time', "mem-reserved-bytes", "mem-allocated-bytes",
+                "mem-allocated-count", 'iteration-time']
+    writer.custom_steps = ["samples", "tokens"]
+
+    for key in loss_dict:
+        log_keys.append(key)
+
+    writer.init_custom_steps(log_keys)
 
     # Advanced, skipped, and Nan iterations.
     advanced_iters_key = 'advanced iterations'
@@ -569,55 +581,39 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
        (iteration % args.tensorboard_log_interval == 0):
         timers.write(timers_to_log, writer, iteration,
                      normalizer=total_iterations)
+    writer.add_scalar("samples", args.consumed_train_samples, add_step=False)
+    writer.add_scalar("tokens", args.consumed_tokens, add_step=False)
     if writer and (iteration % args.tensorboard_log_interval == 0):
+
         if args.log_learning_rate_to_tensorboard:
-            writer.add_scalar('learning-rate', learning_rate, iteration)
-            writer.add_scalar('learning-rate vs samples', learning_rate,
-                              args.consumed_train_samples)
+            writer.add_scalar('learning-rate', learning_rate)
         if args.log_batch_size_to_tensorboard:
-            writer.add_scalar('batch-size', batch_size, iteration)
-            writer.add_scalar('batch-size vs samples', batch_size,
-                              args.consumed_train_samples)
+            writer.add_scalar('batch-size', batch_size)
         for key in loss_dict:
             writer.add_scalar(key , loss_dict[key], iteration)
-            writer.add_scalar(key + ' vs samples', loss_dict[key],
-                              args.consumed_train_samples)
         if args.log_loss_scale_to_tensorboard:
             writer.add_scalar('loss-scale', loss_scale, iteration)
-            writer.add_scalar('loss-scale vs samples', loss_scale,
-                              args.consumed_train_samples)
         if args.log_world_size_to_tensorboard:
             writer.add_scalar('world-size', args.world_size, iteration)
-            writer.add_scalar('world-size vs samples', args.world_size,
-                              args.consumed_train_samples)
         if grad_norm is not None:
             writer.add_scalar('grad-norm', grad_norm, iteration)
-            writer.add_scalar('grad-norm vs samples', grad_norm,
-                              args.consumed_train_samples)
         if num_zeros_in_grad is not None:
             writer.add_scalar('num-zeros', num_zeros_in_grad, iteration)
-            writer.add_scalar('num-zeros vs samples', num_zeros_in_grad,
-                              args.consumed_train_samples)
         if params_norm is not None:
             writer.add_scalar('params-norm', params_norm, iteration)
-            writer.add_scalar('params-norm vs samples', params_norm,
-                              args.consumed_train_samples)
         if args.log_memory_to_tensorboard:
             mem_stats = torch.cuda.memory_stats()
             writer.add_scalar(
                 "mem-reserved-bytes",
                 mem_stats["reserved_bytes.all.current"],
-                iteration,
             )
             writer.add_scalar(
                 "mem-allocated-bytes",
                 mem_stats["allocated_bytes.all.current"],
-                iteration,
             )
             writer.add_scalar(
                 "mem-allocated-count",
                 mem_stats["allocation.all.current"],
-                iteration,
             )
 
     if iteration % args.log_interval == 0:
@@ -626,7 +622,7 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
         if writer:
             if args.log_timers_to_tensorboard:
                 writer.add_scalar('iteration-time',
-                                  elapsed_time_per_iteration, iteration)
+                                  elapsed_time_per_iteration)
         log_string = ' iteration {:8d}/{:8d} |'.format(
             iteration, args.train_iters)
         log_string += ' consumed samples: {:12d} |'.format(
@@ -663,6 +659,8 @@ def training_log(loss_dict, total_loss_dict, learning_rate, iteration,
             report_memory('(after {} iterations)'.format(iteration))
             report_memory_flag = False
         timers.log(timers_to_log, normalizer=args.log_interval)
+
+    writer.dump()
 
     return report_memory_flag
 
@@ -916,6 +914,13 @@ def evaluate_and_print_results(prefix, forward_step_func,
     total_loss_dict, collected_non_loss_data = evaluate(
         forward_step_func, data_iterator, model,
         process_non_loss_data_func, config, verbose, test=test)
+
+    # TODO move it somewhere else
+    log_keys = ["val/ppl"]
+    for key in total_loss_dict:
+        log_keys.append(f'val/{key}')
+    writer.init_custom_steps(log_keys)
+
     string = ' validation loss at {} | '.format(prefix)
     # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
     for key in total_loss_dict:
@@ -923,19 +928,11 @@ def evaluate_and_print_results(prefix, forward_step_func,
         if key == 'CE loss':
             ppl = math.exp(min(20, total_loss_dict[key].item()))
             string += '{} PPL: {:.6E} | '.format(key, ppl)
+            if writer and args.log_validation_ppl_to_tensorboard:
+                writer.add_scalar('val/ppl', ppl)
         if writer:
-            writer.add_scalar('val/{}'.format(key),
-                              total_loss_dict[key].item(),
-                              iteration)
-            writer.add_scalar('val/{} vs samples'.format(key),
-                              total_loss_dict[key].item(),
-                              args.consumed_train_samples)
-            if args.log_validation_ppl_to_tensorboard:
-                writer.add_scalar('val/{} ppl'.format(key), ppl,
-                                  iteration)
-                writer.add_scalar('val/{} ppl vs samples'.format(key),
-                                  ppl, args.consumed_train_samples)
-
+            writer.add_scalar(f'val/{key}',
+                              total_loss_dict[key].item())
     if process_non_loss_data_func is not None and writer and is_last_rank():
         process_non_loss_data_func(collected_non_loss_data, iteration, writer)
 
@@ -943,6 +940,9 @@ def evaluate_and_print_results(prefix, forward_step_func,
     print_rank_last('-' * length)
     print_rank_last(string)
     print_rank_last('-' * length)
+
+    if is_last_rank():
+        writer.dump()
 
 
 def cyclic_iter(iter):

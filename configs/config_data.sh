@@ -4,8 +4,6 @@ DATA_ARGS="
     --eval-interval-samples 50000 \
     --eval-iters-samples 10000 \
 "
-#    --eval-interval-samples 25000 \
-#    --eval-iters-samples 10000 \
 
 OUTPUT_ARGS="
     --log-interval 500 \
@@ -13,9 +11,11 @@ OUTPUT_ARGS="
     --wandb-entity-name machine-learning-methods-in-software-engineering \
     --wandb-project-name  dev \
     --dataset-size-file dataset_size.json \
+    --log-timers-to-tensorboard
 "
+
 # megatron-codeformer megatron-codeformer-LM dev
 # timur-galimzyanov
 # Intervals in global bathes
-# --eval-interval 100 \
-# --eval-iters 10 \
+#    --eval-interval-samples 50000 \
+#    --eval-iters-samples 10000 \

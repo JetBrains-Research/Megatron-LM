@@ -214,6 +214,7 @@ def validate_args(args, defaults={}):
     print(f'Eval interval in batches {args.eval_interval}')
     print(f"Test iterations in batches {args.test_iters}")
     # args.run_id = None
+    args.consumed_tokens = 0
 
     if args.num_layers_per_virtual_pipeline_stage is not None:
         assert args.pipeline_model_parallel_size > 2, (
