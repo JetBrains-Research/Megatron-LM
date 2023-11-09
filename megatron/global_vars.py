@@ -166,7 +166,7 @@ class SummaryWriter:
         pass
 
     def add_scalar(self, metric_name, metric_val, add_step=True):
-        if not add_step or self.custom_steps != [""]:
+        if not add_step or self.custom_steps == [""]:
             self.metrics.update({metric_name: metric_val})
         else:
             for step_name in self.custom_steps:

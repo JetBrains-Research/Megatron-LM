@@ -30,6 +30,7 @@ class ChrF(Metric):
                 f"Wrong batch size for prediction (expected: {target.shape[1]}, actual: {predicted.shape[1]})"
             )
 
+        # TODO correct to be able to use it in method-naming
         predicted_str = self.__vocab.batch_decode(predicted.t(), skip_special_tokens=True)
         target_str = self.__vocab.batch_decode(target.t(), skip_special_tokens=True)
         if self.log_file is not None:

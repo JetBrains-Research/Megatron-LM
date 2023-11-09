@@ -18,35 +18,33 @@ from .utils import get_linear_layer
 
 import pydevd_pycharm
 
+# def build_decoder_input(agg_chunk_embed, input_embeddings, pad_embed, sent_nums, b):
+#     # TODO CHECK for first sentence I prepend zero vector as aggregated vector
+#     # decoder_input collects all chunks representations from second encoder.
+#     # We store them without splitting on batches
+#     # Prepend with 0 vector to run model on first chunk
+#
+#     # decoder input are input embeddings for each chunck, prepended by representation of previous chunck
+#     # size: (1+chunck_length, num_chunks_in_the_batch, hid_dim)
+#     decoder_input = torch.zeros((input_embeddings.size(0)+1, input_embeddings.size(1)+1, input_embeddings.size(-1)), device=input_embeddings.device)
+#     decoder_input[1:, 1:] = input_embeddings
+#     decoder_input[0,:] = pad_embed
+#     start_idx = 1
+#     for i in range(b):
+#         size = sent_nums[i].item()
+#         end_idx = start_idx + size
+#         decoder_input[0,start_idx:end_idx] = agg_chunk_embed[:size, i]
+#         start_idx = end_idx
+#
+#     return decoder_input[:,:-1]
+
 def build_decoder_input(agg_chunk_embed, input_embeddings, pad_embed, sent_nums, b):
     # TODO CHECK for first sentence I prepend zero vector as aggregated vector
     # decoder_input collects all chunks representations from second encoder.
     # We store them without splitting on batches
     # Prepend with 0 vector to run model on first chunk
 
-    # decoder input are input embeddings for each chunck, prepended by representation of previous chunck
-    # size: (1+chunck_length, num_chunks_in_the_batch, hid_dim)
-    decoder_input = torch.zeros((input_embeddings.size(0)+1, input_embeddings.size(1)+1, input_embeddings.size(-1)), device=input_embeddings.device)
-    decoder_input[1:, 1:] = input_embeddings
-    decoder_input[0,:] = pad_embed
-    start_idx = 1
-    for i in range(b):
-        size = sent_nums[i].item()
-        end_idx = start_idx + size
-        decoder_input[0,start_idx:end_idx] = agg_chunk_embed[:size, i]
-        start_idx = end_idx
-
-    return decoder_input[:,:-1]
-
-def build_decoder_input_2(agg_chunk_embed, input_embeddings, pad_embed, sent_nums, b):
-    # TODO CHECK for first sentence I prepend zero vector as aggregated vector
-    # decoder_input collects all chunks representations from second encoder.
-    # We store them without splitting on batches
-    # Prepend with 0 vector to run model on first chunk
-
-    # pad_enc = torch.zeros((1, agg_chunk_embed.size(-1)), device=agg_chunk_embed.device)
     decoder_input = [pad_embed.unsqueeze(0)]
-    #pad_embed.unsqueeze(0)
     for i in range(b):
         size = sent_nums[i].item()
         decoder_input.append(agg_chunk_embed[:size, i, :])
@@ -126,7 +124,7 @@ class СodeformerLanguageModeling(MegatronModule):
         if self.pre_process:
             self.embedding = Embedding(
                 hidden_size=self.hidden_size,
-                vocab_size=args.padded_vocab_size,
+                vocab_size=args.padded_vocab_size+1,
                 max_sequence_length=args.max_position_embeddings,
                 embedding_dropout_prob=args.hidden_dropout,
                 config=config,
@@ -134,6 +132,7 @@ class СodeformerLanguageModeling(MegatronModule):
                 embedding_weights_in_fp32=args.embedding_weights_in_fp32,
             )
 
+            # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
             self._embedding_key = "embedding"
 
             ## TODO DISCUSS decide shouldn't we use shared emb
@@ -225,7 +224,7 @@ class СodeformerLanguageModeling(MegatronModule):
 
         self._decoder_key = "decoder"
         # TODO what is better way to initialize this parameter
-        self.dec_agg_pad = Parameter(torch.randn(args.hidden_size))
+        self.dec_agg_pad = self.embedding.word_embeddings.weight[-1]
 
         if self.post_process:
             # Pooler.
@@ -235,7 +234,7 @@ class СodeformerLanguageModeling(MegatronModule):
 
             if self.untie_embeddings_and_output_weights:
                 self.output_layer = tensor_parallel.ColumnParallelLinear(
-                    args.hidden_size, args.padded_vocab_size, config=config, init_method=self.init_method, bias=False
+                    args.hidden_size, args.padded_vocab_size+1, config=config, init_method=self.init_method, bias=False
                 )  # Setting bias to False always to keep it consistent with embedding tying that also does not have a bias.
                 self._output_layer_key = "output_layer"
 
@@ -256,9 +255,6 @@ class СodeformerLanguageModeling(MegatronModule):
         # TODO input_tensor is always None. When does it change? Model parallelism?
         if not isinstance(input_tensor, list):
             input_tensor = [input_tensor]
-            # if input_tensor is not None:
-            #     import pydevd_pycharm
-            #     pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
 
         self.encoder_1.set_input_tensor(input_tensor[0])
 
@@ -351,23 +347,24 @@ class СodeformerLanguageModeling(MegatronModule):
 
             # decoder input are input embeddings for each chunk, prepended by representation of previous chunk
             # size: (1+chunk_length, num_chunks_in_the_batch, hid_dim)
-            decoder_input = build_decoder_input_2(decoder_input, input_embeddings, self.dec_agg_pad, sent_nums, b)
+            decoder_input = build_decoder_input(decoder_input, input_embeddings, self.dec_agg_pad, sent_nums, b)
+
+            # This is standard approach (v01b)
             # input into cross-attn are encoded tokens from previous chunk
             # we add zeros as cross-attn input for the first chunk
             # TODO input pad_id here
-            # pad_encoder_output = torch.zeros_like(encoder_output[:, 0:1, :])
-            # encoder_output = torch.cat((pad_encoder_output, encoder_output), dim=1)[:,:-1]
+            pad_encoder_output = torch.zeros_like(encoder_output[:, 0:1, :])
+            encoder_output = torch.cat((pad_encoder_output, encoder_output), dim=1)[:,:-1]
             # # Making enc-dec mask
-            # enc_dec_mask = build_enc_dec_mask(enc_input_ids)
-            # This is standard approsch (v01b)
-            # output = self.decoder(
-            #     decoder_input,
-            #     attention_mask=dec_mask,
-            #     encoder_output=encoder_output,
-            #     enc_dec_attn_mask=enc_dec_mask,
-            #     inference_params=inference_params,
-            #     rotary_pos_emb=rotary_pos_emb_dec,
-            # )
+            enc_dec_mask = build_enc_dec_mask(enc_input_ids)
+            output = self.decoder(
+                decoder_input,
+                attention_mask=dec_mask,
+                encoder_output=encoder_output,
+                enc_dec_attn_mask=enc_dec_mask,
+                inference_params=inference_params,
+                rotary_pos_emb=rotary_pos_emb_dec,
+            )
 
             # This is single decoder
             # output = self.decoder(
@@ -378,12 +375,12 @@ class СodeformerLanguageModeling(MegatronModule):
             # )
 
             # v0.1a
-            output = self.decoder(
-                decoder_input,
-                attention_mask=dec_mask,
-                inference_params=inference_params,
-                rotary_pos_emb=rotary_pos_emb_dec,
-            )
+            # output = self.decoder(
+            #     decoder_input,
+            #     attention_mask=dec_mask,
+            #     inference_params=inference_params,
+            #     rotary_pos_emb=rotary_pos_emb_dec,
+            # )
 
         else:
             output = enc_hidden_states.to(input_embeddings.dtype)
@@ -395,9 +392,6 @@ class СodeformerLanguageModeling(MegatronModule):
 
     def state_dict_for_save_checkpoint(self, prefix="", keep_vars=False):
         """For easy load."""
-        # print("------------------------------------")
-        # print("--------- Saving model -------------")
-        # print("------------------------------------")
         state_dict_ = {}
         if self.pre_process:
             state_dict_[self._embedding_key] = self.embedding.state_dict_for_save_checkpoint(
@@ -430,28 +424,21 @@ class СodeformerLanguageModeling(MegatronModule):
 
     def load_state_dict(self, state_dict, strict=True):
         """Customized load."""
-
-        # print("------------------------------------")
-        # print("--------- Loading model -------------")
-        # print("------------------------------------")
-
         # Embedding.
-        if self.pre_process:
-            assert self._embedding_key in state_dict, "No embedding weights in the checkpoint!"
-            # assert self._embedding_dec_key in state_dict, "No embedding for decoder weights in the checkpoint!"
-            state_dict_ = state_dict[self._embedding_key]
-            # state_dict_dec_ = state_dict[self._embedding_dec_key]
-            self.embedding.load_state_dict(state_dict_, strict=strict)
-            # self.embedding_dec.load_state_dict(state_dict_dec_, strict=strict)
+        assert self._embedding_key in state_dict, "No embedding weights in the checkpoint!"
+        # assert self._embedding_dec_key in state_dict, "No embedding for decoder weights in the checkpoint!"
+        state_dict_ = state_dict[self._embedding_key]
+        # state_dict_dec_ = state_dict[self._embedding_dec_key]
+        self.embedding.load_state_dict(state_dict_, strict=strict)
+        # self.embedding_dec.load_state_dict(state_dict_dec_, strict=strict)
 
         # Encoder.
-        if self.add_encoder:
-            assert self._encoder_1_key in state_dict, "No encoder 1 weights in the checkpoint!"
-            assert self._encoder_2_key in state_dict, "No encoder 2 weights in the checkpoint!"
-            state_dict_1_ = state_dict[self._encoder_1_key]
-            state_dict_2_ = state_dict[self._encoder_2_key]
-            self.encoder_1.load_state_dict(state_dict_1_, strict=strict)
-            self.encoder_2.load_state_dict(state_dict_2_, strict=strict)
+        assert self._encoder_1_key in state_dict, "No encoder 1 weights in the checkpoint!"
+        assert self._encoder_2_key in state_dict, "No encoder 2 weights in the checkpoint!"
+        state_dict_1_ = state_dict[self._encoder_1_key]
+        state_dict_2_ = state_dict[self._encoder_2_key]
+        self.encoder_1.load_state_dict(state_dict_1_, strict=strict)
+        self.encoder_2.load_state_dict(state_dict_2_, strict=strict)
 
         assert "linear" in state_dict, "No linear weights in the checkpoint"
         self.linear.load_state_dict(state_dict[self._linear_key], strict=strict)

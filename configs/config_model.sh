@@ -10,7 +10,7 @@ MODEL_ARGS="
     --position-embedding-type rope\
     --ffn-hidden-size 2048 \
     --micro-batch-size 8 \
-    --global-batch-size 128 \
+    --global-batch-size 144 \
     --optimizer sgd \
     --lr 0.01 \
     --min-lr 0.01 \

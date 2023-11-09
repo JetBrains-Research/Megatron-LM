@@ -1,5 +1,7 @@
 source configs/config.sh
 
+echo $CHECKPOINT_PATH
+
 docker run --gpus all -it --rm \
 --ipc=host --ulimit memlock=-1 --ulimit stack=67108864 \
 --network=host \
