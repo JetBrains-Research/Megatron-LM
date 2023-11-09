@@ -138,7 +138,7 @@ def forward_step(data_iterator, model):
     timers("batch generator", log_level=2).start()
     docs_enc, sent_nums, labels, loss_mask, enc_mask, sent_mask, enc_dec_mask, dec_mask = get_batch(data_iterator)
     timers("batch generator").stop()
-
+    # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
     # Forward model lm_labels
     output_tensor = model(
         docs_enc,

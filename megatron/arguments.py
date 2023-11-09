@@ -1418,6 +1418,8 @@ def _add_validation_args(parser):
         "--eval-interval-samples", type=int, default=1000, help="Interval between running evaluation on " "validation set. Counted in samples"
     )
 
+    group.add_argument("--skip-valid", action="store_true")
+    group.add_argument("--skip-test", action="store_true")
     group.add_argument(
         "--skip-train",
         action="store_true",

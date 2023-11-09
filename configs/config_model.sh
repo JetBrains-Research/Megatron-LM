@@ -20,8 +20,8 @@ MODEL_ARGS="
     --nesterov \
     --weight-decay 1e-4 \
     --clip-grad 5.0 \
-    --bf16
-    --vocab-extra-ids 100
+    --bf16 \
+    --vocab-extra-ids 100 \
     --use-flash-attn
 "
 

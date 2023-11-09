@@ -1,10 +1,13 @@
 DATA_ARGS="
     --split 800,100,100 \
     --train-samples 1700000 \
-    --eval-interval-samples 50000 \
-    --eval-iters-samples 10000 \
-"
+    --eval-interval-samples 128 \
+    --eval-iters-samples 128 \
+    --skip-test
+    --skip-train
 
+"
+#    --skip-train
 OUTPUT_ARGS="
     --log-interval 500 \
     --save-interval-samples 100000 \
@@ -17,5 +20,6 @@ OUTPUT_ARGS="
 # megatron-codeformer megatron-codeformer-LM dev
 # timur-galimzyanov
 # Intervals in global bathes
+#    --train-samples 1700000 \
 #    --eval-interval-samples 50000 \
 #    --eval-iters-samples 10000 \

@@ -134,7 +134,7 @@ class CodeformerModel(MegatronModule):
         from codeformer_utils.metrics_calculation import CFMetrics
         tokenizer = get_tokenizer()
         # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
-        self.CF_metrics = CFMetrics(tokenizer)
+        self.CF_metrics = CFMetrics(tokenizer, log_file='out.txt')
 
     def set_input_tensor(self, input_tensor):
         """See megatron.model.transformer.set_input_tensor()"""

@@ -149,6 +149,9 @@ def pretrain(train_valid_test_dataset_provider,
     timers.log(['model-and-optimizer-setup',
                 'train/valid/test-data-iterators-setup'], barrier=True)
 
+    write_args_to_tensorboard()
+    run_id = init_wandb()
+
     if not args.skip_train:
         print_rank_0('training ...')
 
@@ -179,14 +182,14 @@ def pretrain(train_valid_test_dataset_provider,
         evaluate_and_print_results(prefix, forward_step_func,
                                    valid_data_iterator, model,
                                    iteration, process_non_loss_data_func, config,
-                                   verbose=True, write_to_tensorboard=not args.skip_train)
+                                   verbose=True, write_to_tensorboard=True)
 
     if args.do_test:
         prefix = f'iteration {iteration} on test set'
         evaluate_and_print_results(prefix, forward_step_func,
                                    test_data_iterator, model,
                                    iteration, process_non_loss_data_func, config,
-                                   verbose=True, write_to_tensorboard=not args.skip_train, test=True)
+                                   verbose=True, write_to_tensorboard=True, test=True)
 
 
 def update_train_iters(args):
@@ -681,14 +684,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
     """Train the model function."""
     args = get_args()
     timers = get_timers()
-
-    # Write args to tensorboard
-    write_args_to_tensorboard()
-    # import pydevd_pycharm
-    
-    # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
-    # Init Weights and Biases
-    run_id = init_wandb()
+    run_id = args.run_id
 
     # Turn on training mode which enables dropout.
     for model_module in model:
@@ -712,7 +708,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
     print_datetime('before the start of training step')
     report_memory_flag = True
     pbar = tqdm(total=args.train_iters)
-    while iteration < args.train_iters: #args.train_iters = args.train_samples // args.global_batch_size
+    while iteration < args.train_iters: #train_iters = train_samples // global_batch_size
         if args.profile and \
            iteration == args.profile_step_start and \
            torch.distributed.get_rank() in args.profile_ranks:
@@ -721,6 +717,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
 
         update_num_microbatches(args.consumed_train_samples)
         args.curr_iteration = iteration
+        # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
         loss_dict, skipped_iter, grad_norm, num_zeros_in_grad = \
             train_step(forward_step_func,
                        train_data_iterator,
@@ -910,7 +907,7 @@ def evaluate_and_print_results(prefix, forward_step_func,
         writer = get_tensorboard_writer()
     else:
         writer = None
-
+    # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
     total_loss_dict, collected_non_loss_data = evaluate(
         forward_step_func, data_iterator, model,
         process_non_loss_data_func, config, verbose, test=test)
@@ -1025,8 +1022,12 @@ def build_train_valid_test_data_loaders(
         do_valid = valid_dataloader is not None and args.eval_iters > 0
         do_test = test_dataloader is not None and args.eval_iters > 0
         # Need to broadcast num_tokens and num_type_tokens.
+        args.do_train = (not args.skip_train) and do_train
+        args.do_valid = (not args.skip_valid) and do_valid
+        args.do_test = (not args.skip_test) and do_test
+
         flags = torch.cuda.LongTensor(
-            [int(do_train), int(do_valid), int(do_test)])
+            [int(args.do_train), int(args.do_valid), int(args.do_test)])
     else:
         flags = torch.cuda.LongTensor([0, 0, 0])
 
@@ -1034,9 +1035,6 @@ def build_train_valid_test_data_loaders(
     torch.distributed.broadcast(flags,
                                 mpu.get_tensor_model_parallel_src_rank(),
                                 group=mpu.get_tensor_model_parallel_group())
-    args.do_train = flags[0].item()
-    args.do_valid = flags[1].item()
-    args.do_test = flags[2].item()
 
     return train_dataloader, valid_dataloader, test_dataloader
 

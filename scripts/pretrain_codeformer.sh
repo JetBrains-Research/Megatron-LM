@@ -29,7 +29,7 @@ torchrun pretrain_codeformer.py \
     $DATA_PROC_ARGS \
     $OUTPUT_ARGS \
     --save $CHECKPOINT_PATH \
-    # --load $CHECKPOINT_PATH \
+    --load $CHECKPOINT_PATH \
 
 
 #    --finetune
