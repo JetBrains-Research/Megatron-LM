@@ -13,6 +13,7 @@ from .codeformer_language_modeling import СodeformerLanguageModeling
 from .utils import init_method_normal, scaled_init_method_normal
 from .module import MegatronModule
 from megatron import get_tokenizer
+from codeformer_utils.metrics_calculation import CFMetrics
 
 from functools import partial
 import pydevd_pycharm
@@ -115,6 +116,7 @@ class CodeformerModel(MegatronModule):
         self.post_process = post_process
         self.task = self.args.task
         self.first = 0
+        self.return_logits = self.args.log_logits
 
         self.language_model, self._language_model_key = get_language_model(
             config=config,
@@ -131,7 +133,6 @@ class CodeformerModel(MegatronModule):
             self.lm_head = LMHead(self.shared_embedding_or_output_weight().size(0), parallel_output)
             self._lm_head_key = "lm_head"
 
-        from codeformer_utils.metrics_calculation import CFMetrics
         tokenizer = get_tokenizer()
         # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
         self.CF_metrics = CFMetrics(tokenizer, log_file='out.txt')
@@ -230,7 +231,10 @@ class CodeformerModel(MegatronModule):
                 # lm_logits [s, b, vocab]
                 # lm_loss [b, s]
                 result = self.CF_metrics.calc_metrics(lm_logits, lm_labels)
+                if self.return_logits:
+                    return lm_loss, result, lm_logits
                 return lm_loss, result
+
             return lm_loss
         else:
             return decoder_output

@@ -460,6 +460,9 @@ def validate_args(args, defaults={}):
             ),
         )
 
+    if args.log_logits:
+        args.out_log_iter = 0
+
     return args
 
 
@@ -769,6 +772,8 @@ def _add_logging_args(parser):
     group = parser.add_argument_group(title="logging")
 
     group.add_argument("--log-params-norm", action="store_true", help="If set, calculate and log parameters norm.")
+    group.add_argument("--log-logits", action="store_true", help="If set, log model outputs and inputs.")
+
     group.add_argument(
         "--log-num-zeros-in-grad",
         action="store_true",

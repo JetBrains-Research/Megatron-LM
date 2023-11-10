@@ -3,13 +3,12 @@
 """Transformer based language model."""
 
 import torch
-from torch.nn.parameter import Parameter
 
 from megatron import get_args
 from megatron.core import mpu, tensor_parallel
 from megatron.core.enums import ModelType
 from megatron.core.models.common.rotary_pos_embedding import RotaryEmbedding
-from megatron.model.codeformer_common_functions import reshape_aggregated, Embedding, Pooler
+from megatron.model.codeformer_common_functions import reshape_aggregated, Embedding
 
 from .enums import AttnMaskType
 from .module import MegatronModule
@@ -185,6 +184,7 @@ class СodeformerLanguageModeling(MegatronModule):
         self._encoder_1_key = "encoder_1"
 
         # args.max_position_embeddings = args.max_sent_length+2 due toa dditinal BOS and EOS tokens
+        # NO bias in linear layer
         self.linear = get_linear_layer(args.max_position_embeddings, 1, config.init_method)
         self._linear_key = "linear"
 
@@ -227,10 +227,6 @@ class СodeformerLanguageModeling(MegatronModule):
         self.dec_agg_pad = self.embedding.word_embeddings.weight[-1]
 
         if self.post_process:
-            # Pooler.
-            if self.add_pooler:
-                self.pooler = Pooler(self.hidden_size, self.init_method)
-                self._pooler_key = "pooler"
 
             if self.untie_embeddings_and_output_weights:
                 self.output_layer = tensor_parallel.ColumnParallelLinear(
@@ -411,10 +407,6 @@ class СodeformerLanguageModeling(MegatronModule):
             prefix=prefix, keep_vars=keep_vars
         )
         if self.post_process:
-            if self.add_pooler:
-                state_dict_[self._pooler_key] = self.pooler.state_dict_for_save_checkpoint(
-                    prefix=prefix, keep_vars=keep_vars
-                )
             if self.untie_embeddings_and_output_weights:
                 state_dict_[self._output_layer_key] = self.output_layer.state_dict(prefix=prefix, keep_vars=keep_vars)
 
@@ -443,11 +435,7 @@ class СodeformerLanguageModeling(MegatronModule):
         assert "linear" in state_dict, "No linear weights in the checkpoint"
         self.linear.load_state_dict(state_dict[self._linear_key], strict=strict)
 
-        # Pooler.
         if self.post_process:
-            if self.add_pooler:
-                assert "pooler" in state_dict, "could not find data for pooler in the checkpoint"
-                self.pooler.load_state_dict(state_dict[self._pooler_key], strict=strict)
             if self.untie_embeddings_and_output_weights:
                 assert "output_layer" in state_dict, "could not find data for output_layer in the checkpoint"
                 self.output_layer.load_state_dict(state_dict[self._output_layer_key], strict=strict)

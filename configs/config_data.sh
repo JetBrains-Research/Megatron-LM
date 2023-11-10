@@ -3,7 +3,9 @@ DATA_ARGS="
     --train-samples 17000000 \
     --eval-interval-samples 50000 \
     --eval-iters-samples 10000 \
-    --skip-test
+    --skip-test \
+    --skip-train \
+    --log-logits
 
 "
 #    --skip-train
@@ -11,7 +13,7 @@ OUTPUT_ARGS="
     --log-interval 500 \
     --save-interval-samples 100000 \
     --wandb-entity-name machine-learning-methods-in-software-engineering \
-    --wandb-project-name  megatron-codeformer-LM \
+    --wandb-project-name dev \
     --dataset-size-file dataset_size.json \
     --log-timers-to-tensorboard
 "

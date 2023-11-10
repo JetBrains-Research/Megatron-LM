@@ -5,6 +5,7 @@
 from functools import partial
 
 import torch
+import os
 
 from megatron import get_args, get_timers, print_rank_0
 from megatron.core import tensor_parallel
@@ -133,10 +134,12 @@ def loss_func(loss_mask, output):
 def forward_step(data_iterator, model):
     """Forward step."""
     timers = get_timers()
+    args = get_args()
 
     # Get the batch.
     timers("batch generator", log_level=2).start()
-    docs_enc, sent_nums, labels, loss_mask, enc_mask, sent_mask, enc_dec_mask, dec_mask = get_batch(data_iterator)
+    batch = get_batch(data_iterator)
+    docs_enc, sent_nums, labels, loss_mask, enc_mask, sent_mask, enc_dec_mask, dec_mask = batch
     timers("batch generator").stop()
     # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
     # Forward model lm_labels
@@ -151,6 +154,29 @@ def forward_step(data_iterator, model):
         tokentype_ids=None,
         lm_labels=labels,
     )
+
+    if not args.log_logits:
+        return output_tensor, partial(loss_func, loss_mask)
+
+    logits = output_tensor[-1]
+    output_tensor = output_tensor[:-1]
+
+    num_iters = 10
+    if args.out_log_iter < num_iters:
+        assert not model.training, "Model should be in eval mode!"
+        names = ["docs_enc", "sent_nums", "labels", "loss_mask", "enc_mask", "sent_mask", "enc_dec_mask", "dec_mask", "logits"]
+        save_dict = dict()
+        save_dict["num_iters"] = torch.tensor(num_iters)
+        out_folder = os.path.join(args.save, "out_tensors")
+        os.makedirs(out_folder, exist_ok=True)
+
+        for name in names:
+            save_dict[name] = eval(name)
+        tensor_file_name = os.path.join(out_folder, f"iter_{args.out_log_iter}.pth")
+        torch.save(save_dict, tensor_file_name)
+        args.out_log_iter += 1
+
+    assert args.out_log_iter < num_iters, "Stop saving outputs!"
 
     return output_tensor, partial(loss_func, loss_mask)
 
