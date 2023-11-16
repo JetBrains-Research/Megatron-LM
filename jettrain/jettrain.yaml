@@ -1,0 +1,44 @@
+project_name: experiment-kit
+working_dir: .
+#cmd:
+#  - chmod 755 ./scripts/pretrain_codeformer_distributed_jettrain.sh && ./scripts/pretrain_codeformer_distributed_jettrain.sh
+cmd:
+  - chmod 755 ./scripts/pretrain_codeformer_distributed_jettrain.sh && ./scripts/pretrain_codeformer_distributed_jettrain.sh
+provisioning:
+  gpu_count: 4
+  gpu_type: A10G
+#  gpu_count: 1
+#  gpu_type: A10G
+env:
+  docker_image: registry.jetbrains.team/p/per/megatron-lm/megatron-codeformer-env:latest
+  variables:
+    TIMESTAMP: ${now:%Y-%m-%d_%H-%M-%S}
+#  python:
+#    version: '3.10'
+#    pip:
+#      requirements_path: requirements.txt
+  secrets:
+    variables:
+      # set an env variable to avoid keeping secrets in the config
+      WANDB_API_KEY: ${oc.env:WANDB_API_KEY}
+project_sync:
+  local:
+    root: .
+    storage_name: default
+    uri: s3://jettrain-experiments/${oc.env:USER}/megatron-codeformer/
+    exclude: [ "jettrain/*", "venv/*", "wandb/*", "outputs/*", "out/*" ]
+    sync_back: false
+inputs:
+outputs:
+  - storage_name: default
+    path: out
+    uri: s3://jettrain-experiments/${oc.env:USER}/megatron-codeformer/out/
+storages:
+  - name: default
+    credentials:
+      access_key_id: ${oc.env:AWS_ACCESS_KEY_ID}
+      secret_access_key: ${oc.env:AWS_SECRET_ACCESS_KEY}
+teamcity:
+  url: https://mlops.teamcity.com
+  build_conf_id: JetTrain
+  token: ${oc.env:TEAMCITY_TOKEN}

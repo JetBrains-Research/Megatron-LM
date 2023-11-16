@@ -13,7 +13,7 @@ TRAIN_FILE="wikitext/wiki-text-103-raw-train.jsonl"
 VAL_FILE="wikitext/wiki-text-103-raw-val.jsonl"
 TEST_FILE="wikitext/wiki-text-103-raw-test.jsonl"
 #DATA_FILE_PATH="${DATA_INPUT2_PATH}/${DATA_FILE}"
-DATA_FILE_PATH="${DATA_INPUT_PATH}/${TRAIN_FILE} ${DATA_INPUT_PATH}/${VAL_FILE} ${DATA_INPUT_PATH}/${TEST_FILE}"
+DATA_FILE_PATH="${DATA_PATH}/${TRAIN_FILE} ${DATA_PATH}/${VAL_FILE} ${DATA_PATH}/${TEST_FILE}"
 
 python "${MEGATRON_PATH}tools/preprocess_data_codeformer.py" \
        --input $DATA_FILE_PATH \

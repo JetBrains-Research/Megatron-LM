@@ -106,11 +106,11 @@ def get_batch(data_iterator):
     loss_mask = data_b["loss_mask"].float()
 
     enc_mask = data_b["enc_mask"] < 0.5
-    sent_mask = data_b["sent_mask"] < 0.5
+    chunk_mask = data_b["sent_mask"] < 0.5
     enc_dec_mask = data_b["enc_dec_mask"] < 0.5
     dec_mask = data_b["dec_mask"] < 0.5
 
-    return docs_enc, sent_nums, labels, loss_mask, enc_mask, sent_mask, enc_dec_mask, dec_mask
+    return docs_enc, sent_nums, labels, loss_mask, enc_mask, chunk_mask, enc_dec_mask, dec_mask
 
 def loss_func(loss_mask, output):
     result_dict_ = {}
@@ -139,15 +139,15 @@ def forward_step(data_iterator, model):
     # Get the batch.
     timers("batch generator", log_level=2).start()
     batch = get_batch(data_iterator)
-    docs_enc, sent_nums, labels, loss_mask, enc_mask, sent_mask, enc_dec_mask, dec_mask = batch
+    docs_enc, chunk_nums, labels, loss_mask, enc_mask, chunk_mask, enc_dec_mask, dec_mask = batch
     timers("batch generator").stop()
     # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
     # Forward model lm_labels
     output_tensor = model(
         docs_enc,
         labels,
-        sent_nums,
-        sent_mask=sent_mask,
+        chunk_nums,
+        chunk_mask=chunk_mask,
         enc_mask=enc_mask,
         enc_dec_mask=enc_dec_mask,
         dec_mask=dec_mask,
@@ -166,7 +166,6 @@ def forward_step(data_iterator, model):
         assert not model.training, "Model should be in eval mode!"
         names = ["docs_enc", "sent_nums", "labels", "loss_mask", "enc_mask", "sent_mask", "enc_dec_mask", "dec_mask", "logits"]
         save_dict = dict()
-        save_dict["num_iters"] = torch.tensor(num_iters)
         out_folder = os.path.join(args.save, "out_tensors")
         os.makedirs(out_folder, exist_ok=True)
 

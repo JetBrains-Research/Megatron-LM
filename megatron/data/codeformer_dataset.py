@@ -27,7 +27,7 @@ class CodeformerDataset(torch.utils.data.Dataset):
         masked_lm_prob,
         max_seq_length,
         max_seq_length_dec,
-        max_sent_num,
+        max_chunk_num,
         max_label_length,
         seed
     ):
@@ -38,7 +38,7 @@ class CodeformerDataset(torch.utils.data.Dataset):
         self.masked_lm_prob = masked_lm_prob
         self.max_seq_length = max_seq_length
         self.max_seq_length_dec = max_seq_length_dec
-        self.max_sent_num = max_sent_num
+        self.max_chunk_num = max_chunk_num
         self.max_label_length = max_label_length
 
         # Dataset.
@@ -93,14 +93,14 @@ class CodeformerDataset(torch.utils.data.Dataset):
         # Warmup - added first maximal size batch to be sure that all other batche will fit into the model
         # TODO turn on warmup
         # if self.first < 2*self.args.micro_batch_size:
-        #     sample = sample + (self.max_sent_num-len(sample))*[(self.args.max_sent_length+2)*[1]]
+        #     sample = sample + (self.max_chunk_num-len(sample))*[(self.args.max_sent_length+2)*[1]]
         #     self.first += 1
 
         return build_training_sample(
             self.task,
             sample,
             label,
-            self.max_sent_num,
+            self.max_chunk_num,
             self.cls_id,
             self.sep_id,
             self.mask_id,
@@ -111,7 +111,7 @@ def build_training_sample(
     task,
     sample,
     label,
-    max_sent_num,
+    max_chunk_num,
     cls_id,
     sep_id,
     mask_id,
@@ -124,7 +124,7 @@ def build_training_sample(
     Arguments:
         sample: A list of sentences in which each sentence is a list token ids.
         label: Method labels - a list token ids.
-        max_sent_num: Maximum number of subtrees in the method.
+        max_chunk_num: Maximum number of subtrees in the method.
         cls_id: Start of example id.
         sep_id: Separator id.
         mask_id: Mask token id.
@@ -135,11 +135,11 @@ def build_training_sample(
     """
     # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
     pad_id = 0
-    sample = sample[:max_sent_num]
-    num_sent = len(sample)
+    sample = sample[:max_chunk_num]
+    num_chunks = len(sample)
     flattened_sample = np.concatenate(sample, axis=0, dtype=np.int64)
     sample = np.array(sample, dtype=np.int64)
-    enc_mask = [make_attention_mask(sentence, sentence, pad_id) for sentence in sample]
+    enc_mask = [make_attention_mask(chunk, chunk, pad_id) for chunk in sample]
     if task == "method_naming":
         label = np.array(label, dtype=np.int64)
         # TODO I removed label mask (label != pad_id)
@@ -160,7 +160,7 @@ def build_training_sample(
     ## Mask for the second encoder and enc_dec_mask are built in collate_fn in data_sampler
     train_sample = {
         "docs_enc": flattened_sample,
-        "sent_nums": num_sent,
+        "sent_nums": num_chunks,
         "labels": label,
         "loss_mask": loss_mask,
         "enc_mask": np.stack(enc_mask).astype(np.int64),

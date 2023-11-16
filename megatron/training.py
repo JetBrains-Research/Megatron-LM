@@ -708,7 +708,7 @@ def train(forward_step_func, model, optimizer, opt_param_scheduler,
     timers('interval-time', log_level=0).start(barrier=True)
     print_datetime('before the start of training step')
     report_memory_flag = True
-    pbar = tqdm(total=args.train_iters)
+    pbar = tqdm(total=args.train_iters, ncols=70)
     while iteration < args.train_iters: #train_iters = train_samples // global_batch_size
         if args.profile and \
            iteration == args.profile_step_start and \

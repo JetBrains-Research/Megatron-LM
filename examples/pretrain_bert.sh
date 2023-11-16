@@ -1,7 +1,6 @@
 #!/bin/bash
 
 source /workspace/megatron/configs/config_local.sh
-#source configs/config_global.sh
 export PS1="\[\e[1;32m\]\u@\h:\[\e[1;34m\]\w\$\[\e[0m\] "
 
 # export PATH=/workspace/megatron

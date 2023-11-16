@@ -10,34 +10,15 @@ from megatron.core.enums import ModelType
 from megatron.core.models.common.rotary_pos_embedding import RotaryEmbedding
 from megatron.model.codeformer_common_functions import reshape_aggregated, Embedding
 
-from .enums import AttnMaskType
+from .enums import AttnMaskType, LayerType
 from .module import MegatronModule
 from .transformer import ParallelTransformer
 from .utils import get_linear_layer
 
 import pydevd_pycharm
 
-# def build_decoder_input(agg_chunk_embed, input_embeddings, pad_embed, sent_nums, b):
-#     # TODO CHECK for first sentence I prepend zero vector as aggregated vector
-#     # decoder_input collects all chunks representations from second encoder.
-#     # We store them without splitting on batches
-#     # Prepend with 0 vector to run model on first chunk
-#
-#     # decoder input are input embeddings for each chunck, prepended by representation of previous chunck
-#     # size: (1+chunck_length, num_chunks_in_the_batch, hid_dim)
-#     decoder_input = torch.zeros((input_embeddings.size(0)+1, input_embeddings.size(1)+1, input_embeddings.size(-1)), device=input_embeddings.device)
-#     decoder_input[1:, 1:] = input_embeddings
-#     decoder_input[0,:] = pad_embed
-#     start_idx = 1
-#     for i in range(b):
-#         size = sent_nums[i].item()
-#         end_idx = start_idx + size
-#         decoder_input[0,start_idx:end_idx] = agg_chunk_embed[:size, i]
-#         start_idx = end_idx
-#
-#     return decoder_input[:,:-1]
-
-def build_decoder_input(agg_chunk_embed, input_embeddings, pad_embed, sent_nums, b):
+def build_decoder_input_1HCC(agg_chunk_embed, input_embeddings, pad_embed, chunk_nums, b):
+    # [HCC, BOS, Tokens, EOS, PADs]
     # TODO CHECK for first sentence I prepend zero vector as aggregated vector
     # decoder_input collects all chunks representations from second encoder.
     # We store them without splitting on batches
@@ -45,7 +26,7 @@ def build_decoder_input(agg_chunk_embed, input_embeddings, pad_embed, sent_nums,
 
     decoder_input = [pad_embed.unsqueeze(0)]
     for i in range(b):
-        size = sent_nums[i].item()
+        size = chunk_nums[i].item()
         decoder_input.append(agg_chunk_embed[:size, i, :])
     # size: (1+num_chunks_in_the_batch, hid_dim)
     decoder_input = torch.cat(decoder_input, dim=0)
@@ -53,6 +34,30 @@ def build_decoder_input(agg_chunk_embed, input_embeddings, pad_embed, sent_nums,
     # size: (1+chunck_length, num_chunks_in_the_batch, hid_dim)
 
     decoder_input = torch.cat((decoder_input[:-1].unsqueeze(0), input_embeddings), dim=0)
+    return decoder_input
+
+def build_decoder_input_3T(agg_chunk_embed, input_embeddings, pad_embed, chunk_nums, b):
+    # [HCC, Tokens_prev, Tokens_cur, EOS, PADs]
+    # We store them without splitting on batches
+
+    decoder_input = [pad_embed.unsqueeze(0)]
+    for i in range(b):
+        size = chunk_nums[i].item()
+        decoder_input.append(agg_chunk_embed[:size, i, :])
+    # size: (1+num_chunks_in_the_batch, hid_dim)
+    decoder_input = torch.cat(decoder_input, dim=0)
+    # decoder input are input embeddings for each chunck, prepended by representation of previous chunck
+    # size: (1+chunck_length, num_chunks_in_the_batch, hid_dim)
+
+    decoder_input = torch.cat((decoder_input[:-1].unsqueeze(0), input_embeddings), dim=0)
+    return decoder_input
+
+def build_decoder_input(agg_chunk_embed, input_embeddings, pad_embed, chunk_nums, b, architecture):
+    if architecture == "cross_attn_3HT" or architecture == "no_cross_attn_1HCC":
+        decoder_input = build_decoder_input_1HCC(agg_chunk_embed, input_embeddings, pad_embed, chunk_nums, b)
+    if architecture == "no_cross_attn_3T":
+        decoder_input = build_decoder_input_3T(agg_chunk_embed, input_embeddings, pad_embed, chunk_nums, b)
+
     return decoder_input
 
 def build_enc_dec_mask(enc_input_ids):
@@ -115,9 +120,10 @@ class СodeformerLanguageModeling(MegatronModule):
         self.untie_embeddings_and_output_weights = args.untie_embeddings_and_output_weights
         self.add_encoder = add_encoder
         self.add_decoder = add_decoder
-        self.max_sent_length = args.max_sent_length + 2
-        self.max_sent_num = args.max_sent_num
-        self.max_label_length = args.max_label_length + 2
+        self.max_chunk_length = args.max_sent_length + 2
+        self.max_chunk_num = args.max_sent_num
+        self.decoder_context_length = args.decoder_context_length
+        self.architecture = args.architecture
 
         # Embeddings.
         if self.pre_process:
@@ -176,8 +182,8 @@ class СodeformerLanguageModeling(MegatronModule):
             config,
             model_type=ModelType.encoder_and_decoder,
             self_attn_mask_type = AttnMaskType.padding,
-            is_codeformer=True,
-            enc_num=1,
+            seq_length = self.max_chunk_length,
+            num_layers = args.encoder_1_num_layers,
             pre_process=self.pre_process,
             post_process=self.post_process,  # If postprocess, then LayerNorm is applied to the output
         )
@@ -192,8 +198,8 @@ class СodeformerLanguageModeling(MegatronModule):
             config,
             model_type=ModelType.encoder_and_decoder,
             self_attn_mask_type = AttnMaskType.padding,
-            is_codeformer=True,
-            enc_num=2,
+            num_layers = args.encoder_2_num_layers,
+            seq_length = self.max_chunk_num,
             pre_process=self.pre_process,
             post_process=self.post_process,
         )
@@ -202,25 +208,28 @@ class СodeformerLanguageModeling(MegatronModule):
         # for p1, p2 in zip(self.encoder_1.parameters(), self.encoder_2.parameters()):
         #     p2.data = p1.data
 
-        # self.decoder = ParallelTransformer(
-        #     config,
-        #     model_type=ModelType.encoder_and_decoder,
-        #     is_codeformer=True,
-        #     layer_type=LayerType.decoder,
-        #     self_attn_mask_type=self.decoder_attn_mask_type,
-        #     pre_process=self.pre_process,
-        #     post_process=self.post_process,
-        # )
+        if args.cross_attn_3HT:
+            self.decoder = ParallelTransformer(
+                config,
+                model_type=ModelType.encoder_and_decoder,
+                seq_length = args.decoder_context_length,
+                num_layers = args.decoder_num_layers,
+                layer_type=LayerType.decoder,
+                self_attn_mask_type=self.decoder_attn_mask_type,
+                pre_process=self.pre_process,
+                post_process=self.post_process,
+            )
 
-        self.decoder = ParallelTransformer(
-            config,
-            model_type=ModelType.encoder_and_decoder,
-            self_attn_mask_type = AttnMaskType.causal,
-            is_codeformer=True,
-            enc_num=3,
-            pre_process=self.pre_process,
-            post_process=self.post_process,
-        )
+        if args.no_cross_attn_1HCC or args.no_cross_attn_3T:
+            self.decoder = ParallelTransformer(
+                config,
+                model_type=ModelType.encoder_and_decoder,
+                self_attn_mask_type = AttnMaskType.causal,
+                seq_length = args.decoder_context_length,
+                num_layers = args.decoder_num_layers,
+                pre_process=self.pre_process,
+                post_process=self.post_process,
+            )
 
         self._decoder_key = "decoder"
         # TODO what is better way to initialize this parameter
@@ -280,9 +289,9 @@ class СodeformerLanguageModeling(MegatronModule):
         self,
         enc_input_ids,
         dec_input_ids,
-        sent_nums,
+        chunk_nums,
         enc_mask,
-        sent_mask,
+        chunk_mask,
         enc_dec_mask,
         dec_mask,
         tokentype_ids=None,
@@ -294,8 +303,8 @@ class СodeformerLanguageModeling(MegatronModule):
 
         # Encoder embedding.
         # pydevd_pycharm.settrace("localhost", port=2000, stdoutToServer=True, stderrToServer=True)
-        b = sent_nums.size(0)
-        max_sent_num_batch = sent_mask.size(2)
+        b = chunk_nums.size(0)
+        max_chunk_num_batch = chunk_mask.size(2)
 
         enc_position_ids = self.get_position_ids(enc_input_ids)
 
@@ -311,15 +320,15 @@ class СodeformerLanguageModeling(MegatronModule):
         if self.use_rotary_position_embeddings:
             if inference_params is not None:
                 # TODO FINAL may be for inference something should be changed
-                rotary_pos_emb_1 = self.rotary_pos_emb_1(self.max_sent_length)
-                rotary_pos_emb_2 = self.rotary_pos_emb_2(max_sent_num_batch)
-                rotary_pos_emb_dec = self.rotary_pos_emb_dec(self.max_sent_length+1)
+                rotary_pos_emb_1 = self.rotary_pos_emb_1(self.max_chunk_length)
+                rotary_pos_emb_2 = self.rotary_pos_emb_2(max_chunk_num_batch)
+                rotary_pos_emb_dec = self.rotary_pos_emb_dec(self.decoder_context_length)
             else:
-                rotary_pos_emb_1 = self.rotary_pos_emb_1(self.max_sent_length)
-                rotary_pos_emb_2 = self.rotary_pos_emb_2(max_sent_num_batch)
-                rotary_pos_emb_dec = self.rotary_pos_emb_dec(self.max_sent_length+1)
+                rotary_pos_emb_1 = self.rotary_pos_emb_1(self.max_chunk_length)
+                rotary_pos_emb_2 = self.rotary_pos_emb_2(max_chunk_num_batch)
+                rotary_pos_emb_dec = self.rotary_pos_emb_dec(self.decoder_context_length)
         if enc_hidden_states is None:
-            # (sent_len, sent_num, d)  = (b s), sent_num, d
+            # (chunk_len, chunk_num, d)  = (b s), chunk_num, d
 
             encoder_output = self.encoder_1(
                 input_embeddings,
@@ -332,18 +341,18 @@ class СodeformerLanguageModeling(MegatronModule):
             encoder_agg = self.linear(encoder_agg).squeeze(-1) # (b s) d t -> (b s) d
 
             # reshaping embeddings to batches (b s) d -> s_max b d
-            encoder_agg = reshape_aggregated(encoder_agg, sent_nums, max_sent_num_batch, b)
+            encoder_agg = reshape_aggregated(encoder_agg, chunk_nums, max_chunk_num_batch, b)
 
             decoder_input = self.encoder_2(
                 encoder_agg,
-                attention_mask=sent_mask,
+                attention_mask=chunk_mask,
                 inference_params=inference_params,
                 rotary_pos_emb=rotary_pos_emb_2,
             )
 
             # decoder input are input embeddings for each chunk, prepended by representation of previous chunk
             # size: (1+chunk_length, num_chunks_in_the_batch, hid_dim)
-            decoder_input = build_decoder_input(decoder_input, input_embeddings, self.dec_agg_pad, sent_nums, b)
+            decoder_input = build_decoder_input(decoder_input, input_embeddings, self.dec_agg_pad, chunk_nums, b, self.architecture)
 
             # This is standard approach (v01b)
             # input into cross-attn are encoded tokens from previous chunk

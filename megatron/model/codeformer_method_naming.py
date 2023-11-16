@@ -121,8 +121,8 @@ class СodeformerMethodNaming(MegatronModule):
             config,
             model_type=ModelType.encoder_and_decoder,
             self_attn_mask_type = AttnMaskType.padding,
-            is_codeformer=True,
-            enc_num=1,
+            seq_length = self.max_sent_length,
+            num_layers = args.encoder_1_num_layers,
             pre_process=self.pre_process,
             post_process=self.post_process,  # If postprocess, then LayerNorm is applied to the output
         )
@@ -136,8 +136,8 @@ class СodeformerMethodNaming(MegatronModule):
             config,
             model_type=ModelType.encoder_and_decoder,
             self_attn_mask_type = AttnMaskType.padding,
-            is_codeformer=True,
-            enc_num=2,
+            seq_length = self.max_sent_num,
+            num_layers = args.encoder_2_num_layers,
             pre_process=self.pre_process,
             post_process=self.post_process,
         )
@@ -149,7 +149,8 @@ class СodeformerMethodNaming(MegatronModule):
         self.decoder = ParallelTransformer(
             config,
             model_type=ModelType.encoder_and_decoder,
-            is_codeformer=True,
+            seq_length = self.max_label_length,
+            num_layers = args.decoder_num_layers,
             layer_type=LayerType.decoder,
             self_attn_mask_type=self.decoder_attn_mask_type,
             pre_process=self.pre_process,

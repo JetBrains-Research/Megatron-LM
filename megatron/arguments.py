@@ -302,6 +302,19 @@ def validate_args(args, defaults={}):
         # We do not use args.num_layers, but I keep it here to keep integrity of the project.
         args.num_layers = max(layers_nums)
 
+    assert sum([args.cross_attn_3HT, args.no_cross_attn_1HCC, args.no_cross_attn_3T]) <= 1, "only one architecture flag can be given"
+    # 2 - BOS + EOS tokens
+    # 1 - aggregated vector
+    if args.cross_attn_3HT:
+        args.decoder_context_length = args.max_sent_length+2+1
+        args.architecture = "cross_attn_3HT"
+    if args.no_cross_attn_1HCC:
+        args.decoder_context_length = args.max_sent_length+2+1
+        args.architecture = "no_cross_attn_1HCC"
+    if args.no_cross_attn_3T:
+        args.decoder_context_length = 2*args.max_sent_length+2+1
+        args.architecture = "no_cross_attn_3T"
+
     # Check required arguments.
     required_args = ["num_layers", "hidden_size", "num_attention_heads", "max_position_embeddings"]
     for req_arg in required_args:
@@ -666,6 +679,10 @@ def _add_network_size_args(parser):
     group.add_argument("--encoder-num-layers", type=int, default=None, help="Number of encoder transformer layers.")
     group.add_argument("--decoder-num-layers", type=int, default=None, help="Number of decoder transformer layers.")
     group.add_argument("--hidden-size", type=int, default=None, help="Tansformer hidden size.")
+    group.add_argument("--cross-attn-3HT", action="store_true", help="V0.1.b architecture")
+    group.add_argument("--no-cross-attn-1HCC", action="store_true", help="V0.1.a architecture, only 1 aggregated vector, but no +3T context")
+    group.add_argument("--no-cross-attn-3T", action="store_true", help="V0.1.a architecture, +3T context + 1 aggregated vector")
+
     group.add_argument(
         "--ffn-hidden-size",
         type=int,

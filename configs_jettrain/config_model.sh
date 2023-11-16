@@ -7,11 +7,10 @@ MODEL_ARGS="
     --decoder-num-layers 8 \
     --hidden-size 1024 \
     --num-attention-heads 8 \
-    --use-flash-attn \
     --position-embedding-type rope\
     --ffn-hidden-size 2048 \
-    --micro-batch-size 8 \
-    --global-batch-size 144 \
+    --micro-batch-size 2 \
+    --global-batch-size 32 \
     --optimizer sgd \
     --lr 0.01 \
     --min-lr 0.01 \
@@ -23,8 +22,8 @@ MODEL_ARGS="
     --clip-grad 5.0 \
     --bf16 \
     --vocab-extra-ids 100 \
-    --use-flash-attn
 "
+#    --use-flash-attn
 
 #    --optimizer adam \
 #    --lr 0.00001 \
@@ -41,7 +40,6 @@ MODEL_ARGS="
 #     --fp16 \
 #    --kv-channels 64 \
 #     --epochs 2 \
-#    --use-flash-attn \
 
 # Note, that finally label would be (max-label-length+2) due to BOS and EOS tokens.
 DATA_PROC_ARGS="

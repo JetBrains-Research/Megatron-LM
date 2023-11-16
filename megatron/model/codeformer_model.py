@@ -156,9 +156,9 @@ class CodeformerModel(MegatronModule):
         self,
         encoder_input_ids,
         decoder_input_ids,
-        sent_nums,
+        chunk_nums,
         enc_mask,
-        sent_mask,
+        chunk_mask,
         enc_dec_mask,
         dec_mask,
         tokentype_ids=None,
@@ -168,8 +168,8 @@ class CodeformerModel(MegatronModule):
 
         # Converting the attention masks to proper parameter settings
 
-        enc_mask, sent_mask, enc_dec_mask, dec_mask = extended_attention_mask(
-            [enc_mask, sent_mask, enc_dec_mask, dec_mask]
+        enc_mask, chunk_mask, enc_dec_mask, dec_mask = extended_attention_mask(
+            [enc_mask, chunk_mask, enc_dec_mask, dec_mask]
         )
 
         # lm_fun = partial(
@@ -188,9 +188,9 @@ class CodeformerModel(MegatronModule):
         decoder_output = self.language_model(
             encoder_input_ids,
             decoder_input_ids,
-            sent_nums,
+            chunk_nums,
             enc_mask=enc_mask,
-            sent_mask=sent_mask,
+            chunk_mask=chunk_mask,
             enc_dec_mask=enc_dec_mask,
             dec_mask=dec_mask,
             tokentype_ids=tokentype_ids,

@@ -100,6 +100,7 @@ class Encoder(object):
             self.args.max_sent_length,
             bos_id,
             eos_id,
+            pad_id,
         )
         return split_res, splits #, label_tokenized
 
